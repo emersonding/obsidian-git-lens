@@ -1,6 +1,6 @@
 {
   "name": "obsidian-git-lens",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Per-line git blame gutter for Obsidian (JetBrains-style annotate).",
   "main": "main.js",
   "scripts": {
