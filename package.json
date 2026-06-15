@@ -1,0 +1,30 @@
+{
+  "name": "obsidian-git-lens",
+  "version": "0.1.0",
+  "description": "Per-line git blame gutter for Obsidian (JetBrains-style annotate).",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "git",
+    "blame",
+    "annotate"
+  ],
+  "author": "emerson",
+  "license": "MIT",
+  "devDependencies": {
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.26.0",
+    "@types/node": "^20.11.30",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.20.2",
+    "obsidian": "latest",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  }
+}

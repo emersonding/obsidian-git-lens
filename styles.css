@@ -1,0 +1,125 @@
+/* ===== Blame gutter ===== */
+.git-lens-gutter {
+  cursor: pointer;
+  font-size: var(--font-smallest, 0.8em);
+  color: var(--text-muted);
+}
+
+/* Collapse the gutter entirely when blame is disabled. */
+body.git-lens-off .git-lens-gutter {
+  display: none;
+}
+
+.git-lens-annot {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 0.5em;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0.85;
+}
+
+.git-lens-annot:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+}
+
+.git-lens-hash {
+  font-family: var(--font-monospace);
+  opacity: 0.8;
+}
+
+.git-lens-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.git-lens-uncommitted {
+  font-style: italic;
+  opacity: 0.55;
+}
+
+/* ===== Commit popup ===== */
+.git-lens-popup {
+  position: fixed;
+  z-index: var(--layer-popover, 30);
+  max-width: 360px;
+  padding: 10px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.3));
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+
+.git-lens-popup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.git-lens-popup-hash {
+  font-family: var(--font-monospace);
+  font-weight: 600;
+  color: var(--text-accent);
+}
+
+.git-lens-popup-copy {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.git-lens-popup-copy:hover {
+  color: var(--text-normal);
+}
+
+.git-lens-popup-row {
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.git-lens-popup-summary {
+  margin-top: 6px;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
+.git-lens-popup-btn {
+  margin-top: 10px;
+}
+
+/* ===== Diff modal ===== */
+.git-lens-diff {
+  margin: 0;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  white-space: pre;
+  overflow: auto;
+  max-height: 65vh;
+  line-height: 1.45;
+}
+
+.git-lens-diff > div {
+  padding: 0 6px;
+}
+
+.git-lens-add {
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.git-lens-del {
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.git-lens-hunk {
+  color: var(--text-accent);
+}
+
+.git-lens-meta {
+  color: var(--text-muted);
+}
