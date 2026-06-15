@@ -1,7 +1,8 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { readFile } from "fs/promises";
 import * as path from "path";
-import { BlameLine, BlameResult } from "./types";
+import { BlameLine, BlameResult, ZERO_HASH } from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,9 +103,13 @@ export class GitBlameService {
       if (repoRoot) {
         const crypt = await this.encryptedFilter(absFile);
         if (crypt) {
-          // git only stores whole-file ciphertext, re-encrypted each commit, so
-          // per-line blame of the decrypted text is impossible. Skip it.
-          result = { repoRoot, absFile, lines: [], unavailableReason: `encrypted (${crypt})` };
+          // git stores only whole-file ciphertext, so plain blame is meaningless.
+          // Reconstruct per-line blame from decrypted history via the repo's
+          // textconv driver (diff.<driver>.textconv in .git/config, set by git-crypt).
+          const decrypted = await this.blameViaTextconv(absFile);
+          result = decrypted
+            ? { repoRoot, absFile, lines: decrypted }
+            : { repoRoot, absFile, lines: [], unavailableReason: `encrypted (${crypt})` };
         } else {
           // Run from the file's own directory with its basename so we never depend
           // on path.relative(), which breaks when the vault sits under a symlinked
@@ -139,6 +144,87 @@ export class GitBlameService {
       "--",
       path.basename(absFile),
     ]);
+  }
+
+  /**
+   * Per-line blame for an encrypted file (git-crypt etc.): decrypt every
+   * historical version through the repo's textconv driver and attribute lines
+   * incrementally. Returns null when decryption isn't available or the file has
+   * too many revisions / lines to reconstruct cheaply.
+   */
+  async blameViaTextconv(absFile: string): Promise<BlameLine[] | null> {
+    const dir = path.dirname(absFile);
+    const base = path.basename(absFile);
+
+    let hashes: string[];
+    try {
+      const log = await this.run(dir, ["log", "--format=%H", "--reverse", "--", base]);
+      hashes = log.split("\n").map((s) => s.trim()).filter(Boolean);
+    } catch {
+      return null;
+    }
+    if (hashes.length === 0 || hashes.length > MAX_DECRYPT_REVISIONS) return null;
+
+    const versions: TextconvVersion[] = [];
+    for (const hash of hashes) {
+      let content: string;
+      try {
+        content = await this.run(dir, ["show", "--textconv", `${hash}:./${base}`]);
+      } catch {
+        continue; // file absent in this commit (e.g. a deletion)
+      }
+      if (looksEncrypted(content)) return null; // textconv didn't decrypt
+      const lines = splitLines(content);
+      if (lines.length > MAX_DECRYPT_LINES) return null;
+      versions.push({ hash, lines });
+    }
+    if (versions.length === 0) return null;
+
+    // The working-tree file is the decrypted plaintext the editor shows.
+    let finalLines: string[];
+    try {
+      finalLines = splitLines(await readFile(absFile, "utf8"));
+    } catch {
+      finalLines = versions[versions.length - 1].lines;
+    }
+
+    const blameHashes = computeIncrementalBlame(versions, finalLines);
+    const meta = await this.commitMeta(dir, base);
+
+    return blameHashes.map((hash) => {
+      const isUncommitted = /^0+$/.test(hash);
+      const m = meta.get(hash);
+      return {
+        hash: isUncommitted ? ZERO_HASH : hash,
+        author: isUncommitted ? "" : m?.author ?? "",
+        authorMail: isUncommitted ? "" : m?.authorMail ?? "",
+        authorTime: isUncommitted ? 0 : m?.authorTime ?? 0,
+        summary: isUncommitted ? "" : m?.summary ?? "",
+        isUncommitted,
+      };
+    });
+  }
+
+  /** Map of commit hash -> author/date/summary for every commit touching a file. */
+  private async commitMeta(dir: string, base: string): Promise<Map<string, CommitMeta>> {
+    const map = new Map<string, CommitMeta>();
+    let out: string;
+    try {
+      out = await this.run(dir, ["log", "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s", "--", base]);
+    } catch {
+      return map;
+    }
+    for (const line of out.split("\n")) {
+      if (!line) continue;
+      const [hash, author, mail, at, ...rest] = line.split("\x1f");
+      map.set(hash, {
+        author: author ?? "",
+        authorMail: mail ? `<${mail}>` : "",
+        authorTime: parseInt(at ?? "", 10) || 0,
+        summary: rest.join("\x1f"),
+      });
+    }
+    return map;
   }
 }
 
@@ -201,4 +287,85 @@ export function parsePorcelain(out: string): BlameLine[] {
   }
 
   return lines;
+}
+
+/** Caps that keep decryption-aware blame from being pathologically slow. */
+const MAX_DECRYPT_REVISIONS = 150;
+const MAX_DECRYPT_LINES = 2000;
+
+interface TextconvVersion {
+  hash: string;
+  lines: string[];
+}
+
+/** Split like CodeMirror counts lines: a trailing "\n" yields a final empty line. */
+function splitLines(content: string): string[] {
+  return content.split("\n");
+}
+
+/** True if textconv handed back git-crypt ciphertext (i.e. it didn't decrypt). */
+function looksEncrypted(content: string): boolean {
+  return content.slice(0, 64).includes("GITCRYPT");
+}
+
+/**
+ * Align `cur` lines to `prev` lines via an LCS. Returns an array parallel to
+ * `cur`: each entry is the index of the matching (unchanged) line in `prev`, or
+ * -1 if the line is new/changed.
+ */
+function alignLines(prev: string[], cur: string[]): Int32Array {
+  const n = prev.length;
+  const m = cur.length;
+  const match = new Int32Array(m).fill(-1);
+  if (n === 0 || m === 0) return match;
+
+  // dp[i][j] = length of the LCS of prev[i:] and cur[j:].
+  const dp: Int32Array[] = [];
+  for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    const row = dp[i];
+    const next = dp[i + 1];
+    const pi = prev[i];
+    for (let j = m - 1; j >= 0; j--) {
+      row[j] = pi === cur[j] ? next[j + 1] + 1 : next[j] >= row[j + 1] ? next[j] : row[j + 1];
+    }
+  }
+
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (prev[i] === cur[j]) {
+      match[j] = i;
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return match;
+}
+
+/**
+ * Walk decrypted versions oldest -> newest and attribute each line of the final
+ * (working-tree) content to the commit that last introduced it. Lines absent from
+ * the newest committed version are "uncommitted" (all-zero hash). Exported for tests.
+ */
+export function computeIncrementalBlame(
+  versions: { hash: string; lines: string[] }[],
+  finalLines: string[],
+): string[] {
+  const ZERO = "0".repeat(40);
+  if (versions.length === 0) return finalLines.map(() => ZERO);
+
+  let blame: string[] = versions[0].lines.map(() => versions[0].hash);
+  for (let k = 1; k < versions.length; k++) {
+    const match = alignLines(versions[k - 1].lines, versions[k].lines);
+    const prevBlame = blame;
+    blame = versions[k].lines.map((_, j) => (match[j] >= 0 ? prevBlame[match[j]] : versions[k].hash));
+  }
+
+  const match = alignLines(versions[versions.length - 1].lines, finalLines);
+  return finalLines.map((_, j) => (match[j] >= 0 ? blame[match[j]] : ZERO));
 }

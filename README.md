@@ -82,11 +82,22 @@ verify the live gutter — the thing unit tests can't see. It:
 Prereqs: desktop Obsidian installed, the target vault already trusted with community plugins
 enabled. Note: this **closes your running Obsidian** and reopens it with a debug port.
 
+## Encrypted notes (git-crypt)
+
+Files behind an encrypting clean/smudge filter (git-crypt) store only whole-file
+ciphertext in git, so plain `git blame` is meaningless. Git Lens still blames them by
+**decrypting each historical version** through the repo's `diff.<driver>.textconv` driver
+(the one git-crypt writes into `.git/config`) and attributing lines incrementally with an
+LCS diff. Caveats:
+
+- First open of a heavily-committed encrypted note is slower (it decrypts every revision);
+  results are cached per file until you edit/save.
+- Falls back to no gutter if the repo is locked / textconv can't decrypt, or for files with
+  more than 150 revisions or 2000 lines.
+
 ## Known limitations
 
 - Editing mode only (reading mode has no gutter — matching how code editors annotate).
-- **Encrypted notes (git-crypt) cannot be blamed**: git stores only whole-file ciphertext,
-  so per-line plaintext history doesn't exist. Such files are detected and show no gutter.
 - While you have unsaved edits, annotations may be momentarily stale; they re-compute on save.
 - Desktop only; no mobile / in-browser git yet.
 

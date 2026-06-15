@@ -6,11 +6,11 @@ import * as path from "path";
 import { GitBlameService } from "./git";
 
 /**
- * Files run through an encrypting clean/smudge filter (git-crypt) store only
- * ciphertext in git, so per-line blame of the plaintext is impossible. We detect
- * the filter via `git check-attr` and report blame as unavailable instead of
- * showing misleading attributions. This reproduces that with a `.gitattributes`
- * filter assignment (no git-crypt binary required).
+ * Fallback behavior: when a file is behind an encrypting filter (git-crypt) but its
+ * content can't be decrypted for blame (locked repo / no working textconv), the
+ * plugin must report blame as unavailable rather than blaming ciphertext. And files
+ * with no encrypting filter blame normally. (The decrypt-and-blame success path is
+ * covered in git.textconv.test.ts.)
  */
 
 function git(args: string[], cwd: string): string {
@@ -27,17 +27,20 @@ function initRepo(): string {
 }
 
 describe("GitBlameService encrypted files", () => {
-  it("reports blame unavailable for files behind a git-crypt filter", async () => {
+  it("reports blame unavailable when the file stays encrypted (no working textconv)", async () => {
     const repo = initRepo();
     try {
-      // A local passthrough filter whose name matches /crypt/i — hermetic, so we
-      // don't invoke a real (and possibly locked) git-crypt binary on commit.
-      git(["config", "filter.cryptdummy.clean", "cat"], repo);
-      git(["config", "filter.cryptdummy.smudge", "cat"], repo);
-      writeFileSync(path.join(repo, ".gitattributes"), "secret.md filter=cryptdummy diff=cryptdummy\n");
+      // clean filter prefixes the git-crypt magic so the stored blob looks encrypted;
+      // with no diff textconv configured, `git show --textconv` returns it as-is.
+      writeFileSync(
+        path.join(repo, "enc.js"),
+        `process.stdout.write("\\0GITCRYPT\\0" + require("fs").readFileSync(0).toString("base64"));`,
+      );
+      git(["config", "filter.cryptlocked.clean", `node ${path.join(repo, "enc.js")}`], repo);
+      writeFileSync(path.join(repo, ".gitattributes"), "secret.md filter=cryptlocked\n");
       const f = path.join(repo, "secret.md");
       writeFileSync(f, "top secret\nmore secret\n");
-      git(["add", "."], repo);
+      git(["add", "secret.md", ".gitattributes"], repo);
       git(["commit", "-q", "-m", "init"], repo);
 
       const r = await new GitBlameService().blame(f, statSync(f).mtimeMs);
