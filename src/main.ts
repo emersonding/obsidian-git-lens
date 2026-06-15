@@ -10,7 +10,7 @@ import {
 } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { GitBlameService } from "./git";
-import { blameExtension, readBlameContext, setBlame } from "./blameExtension";
+import { blameExtension, blameMarkerCount, readBlameContext, setBlame } from "./blameExtension";
 import { BlamePopup } from "./popup";
 import { GitLensSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, GitLensSettings } from "./types";
@@ -241,6 +241,10 @@ export default class GitLensPlugin extends Plugin {
     const cm = view ? this.getEditorView(view) : null;
     lines.push(`CM6 editor: ${!!cm}`);
     lines.push(`gutter attached: ${cm ? readBlameContext(cm.state) !== null : "n/a"}`);
+    if (cm) {
+      lines.push(`doc lines: ${cm.state.doc.lines}`);
+      lines.push(`gutter markers: ${blameMarkerCount(cm.state)}`);
+    }
 
     if (file) {
       const abs = this.absPath(file);
@@ -248,7 +252,12 @@ export default class GitLensPlugin extends Plugin {
       lines.push(`repo root: ${root ?? "not a git repo / untracked"}`);
       if (root) {
         const result = await this.git.blame(abs, file.stat.mtime);
-        lines.push(`blame lines: ${result ? result.lines.length : "null"}`);
+        if (result) {
+          lines.push(`blame lines: ${result.lines.length}`);
+          lines.push(`distinct commits: ${new Set(result.lines.map((l) => l.hash)).size}`);
+        } else {
+          lines.push("blame lines: null");
+        }
       }
     }
 

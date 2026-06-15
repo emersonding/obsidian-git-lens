@@ -53,6 +53,11 @@ export function readBlameContext(state: EditorState): BlameContext | null {
   return state.field(blameDataField, false) ?? null;
 }
 
+/** Number of gutter markers currently built for this editor (diagnostics). */
+export function blameMarkerCount(state: EditorState): number {
+  return state.field(blameMarkersField, false)?.size ?? 0;
+}
+
 class BlameMarker extends GutterMarker {
   constructor(
     private readonly blame: BlameLine,
