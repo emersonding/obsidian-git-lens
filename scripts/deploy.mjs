@@ -1,5 +1,6 @@
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -13,6 +14,7 @@ const FILES = ["manifest.json", "main.js", "styles.css"];
  * sure it's enabled. Returns { dest, version }.
  */
 export function deploy(vault = DEFAULT_VAULT, { build = true } = {}) {
+  vault = vault.replace(/^~(?=$|\/)/, homedir()); // expand a literal leading ~
   if (build) {
     console.log("[deploy] npm run build…");
     execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "inherit" });
