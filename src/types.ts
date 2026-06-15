@@ -30,6 +30,25 @@ export interface BlameResult {
 
 export type DateStyle = "relative" | "absolute";
 
+/** Structured snapshot of the blame pipeline for the active file. Drives both the
+ *  "Diagnose" Notice and the automated E2E assertions. */
+export interface BlameStats {
+  desktop: boolean;
+  gutterEnabled: boolean;
+  gitPath: string;
+  gitVersion: string | null;
+  file: string | null;
+  repoRoot: string | null;
+  hasView: boolean;
+  hasEditor: boolean;
+  gutterAttached: boolean;
+  docLines: number | null;
+  markers: number | null;
+  blameLines: number | null;
+  distinctCommits: number | null;
+  unavailableReason: string | null;
+}
+
 export interface GitLensSettings {
   /** Master switch for the gutter. */
   enableGutter: boolean;

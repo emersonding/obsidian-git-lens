@@ -62,12 +62,31 @@ See `src/`:
 ## Testing
 
 ```bash
-npm test           # vitest unit tests for the blame parser
+npm test                    # vitest: blame parser + real-git integration
+npm run deploy -- <vault>   # build + install/enable git-lens into a vault (default: web-clipper)
+npm run e2e                 # automated end-to-end check in REAL Obsidian
 ```
 
-## Known limitations (v1)
+### Automated E2E (`npm run e2e`)
+
+`scripts/e2e-obsidian.mjs` drives real Obsidian over the Chrome DevTools Protocol to
+verify the live gutter — the thing unit tests can't see. It:
+
+1. builds and installs the plugin into the **web-clipper** vault (and enables it),
+2. **quits and relaunches Obsidian** with `--remote-debugging-port=9222`,
+3. connects with `puppeteer-core`, opens a non-encrypted multi-commit note in editing mode,
+4. asserts via the plugin's `getBlameStats()`: every blamed line has a marker, blame covers
+   the document, `distinctCommits > 1`, and clicking the gutter opens a **single-file** diff,
+5. writes screenshots to `scripts/e2e-out/` and exits non-zero on any failure.
+
+Prereqs: desktop Obsidian installed, the target vault already trusted with community plugins
+enabled. Note: this **closes your running Obsidian** and reopens it with a debug port.
+
+## Known limitations
 
 - Editing mode only (reading mode has no gutter — matching how code editors annotate).
+- **Encrypted notes (git-crypt) cannot be blamed**: git stores only whole-file ciphertext,
+  so per-line plaintext history doesn't exist. Such files are detected and show no gutter.
 - While you have unsaved edits, annotations may be momentarily stale; they re-compute on save.
 - Desktop only; no mobile / in-browser git yet.
 

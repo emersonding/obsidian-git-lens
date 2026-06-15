@@ -13,7 +13,7 @@ import { GitBlameService } from "./git";
 import { blameExtension, blameMarkerCount, readBlameContext, setBlame } from "./blameExtension";
 import { DiffModal } from "./diff";
 import { GitLensSettingTab } from "./settings";
-import { BlameLine, BlameResult, DEFAULT_SETTINGS, GitLensSettings } from "./types";
+import { BlameLine, BlameResult, BlameStats, DEFAULT_SETTINGS, GitLensSettings } from "./types";
 
 export default class GitLensPlugin extends Plugin {
   settings: GitLensSettings = DEFAULT_SETTINGS;
@@ -232,49 +232,83 @@ export default class GitLensPlugin extends Plugin {
     }
   }
 
-  /** Report the full blame pipeline state for the active file. */
-  private async diagnose(): Promise<void> {
-    const lines: string[] = [];
-    lines.push(`desktop: ${Platform.isDesktopApp}`);
-    lines.push(`gutter enabled: ${this.settings.enableGutter}`);
-    lines.push(`git path: ${this.git.gitPath}`);
+  /**
+   * Structured snapshot of the blame pipeline for the active file. Public so the
+   * automated E2E harness can read it via `app.plugins.plugins['git-lens'].getBlameStats()`.
+   */
+  async getBlameStats(): Promise<BlameStats> {
+    const stats: BlameStats = {
+      desktop: Platform.isDesktopApp,
+      gutterEnabled: this.settings.enableGutter,
+      gitPath: this.git.gitPath,
+      gitVersion: null,
+      file: null,
+      repoRoot: null,
+      hasView: false,
+      hasEditor: false,
+      gutterAttached: false,
+      docLines: null,
+      markers: null,
+      blameLines: null,
+      distinctCommits: null,
+      unavailableReason: null,
+    };
 
     try {
-      lines.push(`git: ${await this.git.version(this.vaultBase())}`);
+      stats.gitVersion = await this.git.version(this.vaultBase());
     } catch {
-      lines.push("git: NOT FOUND on PATH (set an absolute path in settings)");
+      stats.gitVersion = null;
     }
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    lines.push(`markdown view: ${!!view}`);
+    stats.hasView = !!view;
     const file = view?.file ?? this.app.workspace.getActiveFile();
-    lines.push(`file: ${file?.path ?? "none"}`);
+    stats.file = file?.path ?? null;
     const cm = view ? this.getEditorView(view) : null;
-    lines.push(`CM6 editor: ${!!cm}`);
-    lines.push(`gutter attached: ${cm ? readBlameContext(cm.state) !== null : "n/a"}`);
+    stats.hasEditor = !!cm;
     if (cm) {
-      lines.push(`doc lines: ${cm.state.doc.lines}`);
-      lines.push(`gutter markers: ${blameMarkerCount(cm.state)}`);
+      stats.gutterAttached = readBlameContext(cm.state) !== null;
+      stats.docLines = cm.state.doc.lines;
+      stats.markers = blameMarkerCount(cm.state);
     }
 
     if (file) {
       const abs = this.absPath(file);
-      const root = await this.git.getRepoRoot(abs);
-      lines.push(`repo root: ${root ?? "not a git repo / untracked"}`);
-      if (root) {
+      stats.repoRoot = await this.git.getRepoRoot(abs);
+      if (stats.repoRoot) {
         const result = await this.git.blame(abs, file.stat.mtime);
         if (result?.unavailableReason) {
-          lines.push(`blame: unavailable — ${result.unavailableReason}`);
+          stats.unavailableReason = result.unavailableReason;
         } else if (result) {
-          lines.push(`blame lines: ${result.lines.length}`);
-          lines.push(`distinct commits: ${new Set(result.lines.map((l) => l.hash)).size}`);
-        } else {
-          lines.push("blame lines: null");
+          stats.blameLines = result.lines.length;
+          stats.distinctCommits = new Set(result.lines.map((l) => l.hash)).size;
         }
       }
     }
 
-    const msg = lines.join("\n");
+    return stats;
+  }
+
+  /** Report the blame pipeline state for the active file as a Notice. */
+  private async diagnose(): Promise<void> {
+    const s = await this.getBlameStats();
+    const blame = s.unavailableReason
+      ? `blame: unavailable — ${s.unavailableReason}`
+      : s.blameLines === null
+        ? "blame: no git repo / untracked"
+        : `blame lines: ${s.blameLines}\ndistinct commits: ${s.distinctCommits}`;
+    const msg = [
+      `desktop: ${s.desktop}`,
+      `gutter enabled: ${s.gutterEnabled}`,
+      `git: ${s.gitVersion ?? "NOT FOUND on PATH (set an absolute path in settings)"}`,
+      `file: ${s.file ?? "none"}`,
+      `CM6 editor: ${s.hasEditor}`,
+      `gutter attached: ${s.gutterAttached}`,
+      `doc lines: ${s.docLines ?? "n/a"}`,
+      `gutter markers: ${s.markers ?? "n/a"}`,
+      `repo root: ${s.repoRoot ?? "not a git repo / untracked"}`,
+      blame,
+    ].join("\n");
     this.log(`diagnose\n${msg}`);
     new Notice(`Git Lens diagnose:\n${msg}`, 20000);
   }
