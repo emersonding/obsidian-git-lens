@@ -82,12 +82,6 @@ export default class GitLensPlugin extends Plugin {
             .setIcon("git-branch")
             .onClick(() => this.toggleNoteBlame()),
         );
-        menu.addItem((item) =>
-          item
-            .setTitle("Git Lens: Blame this line")
-            .setIcon("git-branch")
-            .onClick(() => this.blameCurrentLine()),
-        );
       }),
     );
 
@@ -101,12 +95,6 @@ export default class GitLensPlugin extends Plugin {
       id: "toggle-blame-gutter",
       name: "Toggle blame for all notes (global)",
       callback: () => void this.toggleGutter(),
-    });
-
-    this.addCommand({
-      id: "blame-current-line",
-      name: "Blame current line",
-      callback: () => this.blameCurrentLine(),
     });
 
     this.addCommand({
@@ -234,24 +222,6 @@ export default class GitLensPlugin extends Plugin {
   refreshActive(): void {
     const file = this.app.workspace.getActiveFile();
     if (file) void this.updateBlame(file);
-  }
-
-  /** Open the commit diff for the caret's current line. */
-  private blameCurrentLine(): void {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
-    const cm = this.getEditorView(view);
-    if (!cm) return;
-
-    const ctx = readBlameContext(cm.state);
-    if (!ctx || !ctx.result) {
-      new Notice("Git Lens: no blame data for this file");
-      return;
-    }
-
-    const lineNo = cm.state.doc.lineAt(cm.state.selection.main.head).number;
-    const blame = ctx.result.lines[lineNo - 1];
-    if (blame) void this.openDiff(blame, ctx.result);
   }
 
   /** Show the commit that last changed a line, scoped to the current file. */
