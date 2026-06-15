@@ -163,8 +163,11 @@ async function main() {
       throw new Error(`note not found: ${note} (vault has ${opened.count} md files, e.g. ${JSON.stringify(opened.sample)})`);
     }
 
+    // Global blame is off by default now; turn it on for just this note (per-note feature).
+    await page.evaluate(() => window.app.commands.executeCommandById("git-lens:toggle-blame-note"));
+
     const stats = await pollStats(page, (s) => s.markers != null && s.markers > 0, 25000);
-    if (!stats) throw new Error("blame never produced markers (getBlameStats stayed empty)");
+    if (!stats) throw new Error("blame never produced markers (per-note toggle / getBlameStats stayed empty)");
     console.log("[e2e] stats:", JSON.stringify(stats));
 
     // Allow 1-line slack: CM counts the empty line after a trailing newline, git blame omits it.
@@ -207,6 +210,13 @@ async function main() {
     }
     check("click opens diff modal (A1)", !!diff, diff ? "modal shown" : "no .git-lens-diff modal");
     check("diff scoped to one file (A3)", diff && diff.fileCount === 1, diff ? `diff --git x${diff.fileCount}` : "n/a");
+
+    // Per-note toggle OFF clears the gutter.
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => window.app.commands.executeCommandById("git-lens:toggle-blame-note"));
+    await sleep(800);
+    const afterOff = await page.evaluate(() => document.querySelectorAll(".git-lens-annot").length);
+    check("per-note toggle off clears the gutter", afterOff === 0, `.git-lens-annot=${afterOff}`);
   } finally {
     await browser.disconnect();
   }

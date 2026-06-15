@@ -2,22 +2,27 @@
 
 JetBrains-style per-line **git blame** annotations for your notes. If your vault (or a
 folder in it) is a git repository, Git Lens shows, in the editor's left gutter, the commit
-that last changed every line — short hash, author date, and an age-based color bar.
+that last changed every line — its date, with a **distinct color per commit** so you can see
+where one commit's block ends and the next begins.
 
-Click or **right-click** a line to open a popup with the full commit details, and from there
-**show the full diff** (`git show`) in a modal.
+Click a line's annotation to open the **full commit diff** (`git show`, scoped to that file).
+
+Blame is **off by default** — turn it on per note (ribbon / command / right-click), or
+globally in settings.
 
 ![concept](docs/concept.png)
 
 ## Features
 
-- Always-on blame gutter in Live Preview / Source mode (like JetBrains "Annotate").
-- Short hash + relative or absolute date per line, colored by commit age.
-- Consecutive lines from the same commit are visually grouped.
-- Click / right-click a line → commit popup (author, date, message, copy hash).
-- "Show full diff" → `git show <hash>` rendered with +/- coloring.
+- Per-line blame gutter in editing mode (Live Preview / Source), like JetBrains "Annotate".
+- Date per line (relative or absolute) with a **distinct color per commit**, so adjacent
+  commits are clearly separated. Color-by-age and no-color modes are also available.
+- **Per-note toggle**: show blame for just the current note (ribbon icon, command, or
+  right-click) — independent of the global on/off setting, which is **off by default**.
+- Click a line → the **commit diff** (`git show <hash> -- <file>`) in a modal, +/- colored.
+- Works on **git-crypt-encrypted notes** (decrypts history via the repo's textconv driver).
 - Locally-modified lines are marked as *uncommitted*.
-- Command + ribbon icon to toggle the gutter; settings for date style, hash, and coloring.
+- Settings: global on/off, date style, show hash, bar color, git executable path.
 
 ## Requirements
 

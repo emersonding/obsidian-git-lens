@@ -66,7 +66,7 @@ export interface GitLensSettings {
 }
 
 export const DEFAULT_SETTINGS: GitLensSettings = {
-  enableGutter: true,
+  enableGutter: false,
   dateStyle: "absolute",
   showHash: false,
   colorMode: "commit",

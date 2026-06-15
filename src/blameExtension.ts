@@ -104,19 +104,6 @@ class BlameMarker extends GutterMarker {
   }
 }
 
-/** Reserves a stable gutter width so annotations never collapse to a sliver. */
-class SpacerMarker extends GutterMarker {
-  toDOM(): HTMLElement {
-    const el = document.createElement("div");
-    el.className = "git-lens-annot";
-    el.appendChild(span("git-lens-hash", "0000000"));
-    el.appendChild(span("git-lens-date", "0000-00-00"));
-    return el;
-  }
-}
-
-const spacerMarker = new SpacerMarker();
-
 function span(cls: string, text: string): HTMLSpanElement {
   const s = document.createElement("span");
   s.className = cls;
@@ -125,7 +112,9 @@ function span(cls: string, text: string): HTMLSpanElement {
 }
 
 function buildMarkers(doc: Text, ctx: BlameContext): RangeSet<GutterMarker> {
-  if (!ctx.result || !ctx.settings.enableGutter) return RangeSet.empty;
+  // Whether to blame at all is decided upstream (global setting or per-note opt-in);
+  // here we just render whatever blame result was dispatched. No result -> no gutter.
+  if (!ctx.result) return RangeSet.empty;
 
   const builder = new RangeSetBuilder<GutterMarker>();
   const blameLines = ctx.result.lines;
@@ -163,7 +152,6 @@ export function blameExtension(deps: BlameGutterDeps): Extension {
     gutter({
       class: "git-lens-gutter",
       markers: (view) => view.state.field(blameMarkersField),
-      initialSpacer: () => spacerMarker,
       domEventHandlers: {
         mousedown: (view, line, event) => handleGutterEvent(view, line.from, event, deps),
         contextmenu: (view, line, event) => handleGutterEvent(view, line.from, event, deps),

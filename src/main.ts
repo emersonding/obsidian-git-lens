@@ -18,6 +18,9 @@ import { BlameLine, BlameResult, BlameStats, DEFAULT_SETTINGS, GitLensSettings }
 export default class GitLensPlugin extends Plugin {
   settings: GitLensSettings = DEFAULT_SETTINGS;
   private readonly git = new GitBlameService();
+  /** Notes with blame explicitly turned on for just that note (independent of the
+   *  global setting; ephemeral — resets on reload). */
+  private readonly perNote = new Set<string>();
   private recomputeOnModify!: Debouncer<[TFile], void>;
 
   async onload(): Promise<void> {
@@ -29,7 +32,6 @@ export default class GitLensPlugin extends Plugin {
     }
 
     this.applyGitConfig();
-    this.applyGutterVisibility();
 
     this.registerEditorExtension(
       blameExtension({
@@ -73,6 +75,13 @@ export default class GitLensPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, _editor, view) => {
         if (!(view instanceof MarkdownView) || !view.file) return;
+        const on = !!view.file && this.perNote.has(view.file.path);
+        menu.addItem((item) =>
+          item
+            .setTitle(`Git Lens: ${on ? "hide" : "show"} blame for this note`)
+            .setIcon("git-branch")
+            .onClick(() => this.toggleNoteBlame()),
+        );
         menu.addItem((item) =>
           item
             .setTitle("Git Lens: Blame this line")
@@ -83,8 +92,14 @@ export default class GitLensPlugin extends Plugin {
     );
 
     this.addCommand({
+      id: "toggle-blame-note",
+      name: "Toggle blame for this note",
+      callback: () => this.toggleNoteBlame(),
+    });
+
+    this.addCommand({
       id: "toggle-blame-gutter",
-      name: "Toggle blame gutter",
+      name: "Toggle blame for all notes (global)",
       callback: () => void this.toggleGutter(),
     });
 
@@ -100,7 +115,7 @@ export default class GitLensPlugin extends Plugin {
       callback: () => void this.diagnose(),
     });
 
-    this.addRibbonIcon("git-branch", "Git Lens: toggle blame gutter", () => void this.toggleGutter());
+    this.addRibbonIcon("git-branch", "Git Lens: toggle blame for this note", () => this.toggleNoteBlame());
 
     // Verify git is reachable; warn early if not (common macOS GUI PATH issue).
     void this.git
@@ -130,15 +145,27 @@ export default class GitLensPlugin extends Plugin {
     this.git.clear();
   }
 
+  /** Whether blame should show for a file: the global setting OR a per-note opt-in. */
+  private shouldBlame(file: TFile | null | undefined): boolean {
+    return !!file && (this.settings.enableGutter || this.perNote.has(file.path));
+  }
+
   private async toggleGutter(): Promise<void> {
     this.settings.enableGutter = !this.settings.enableGutter;
     await this.saveSettings();
     this.refreshActive();
-    new Notice(`Git Lens: blame gutter ${this.settings.enableGutter ? "on" : "off"}`);
+    new Notice(`Git Lens: blame for all notes ${this.settings.enableGutter ? "on" : "off"}`);
   }
 
-  private applyGutterVisibility(): void {
-    document.body.classList.toggle("git-lens-off", !this.settings.enableGutter);
+  /** Toggle blame for just the active note, independent of the global setting. */
+  private toggleNoteBlame(): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) return;
+    const on = !this.perNote.has(file.path);
+    if (on) this.perNote.add(file.path);
+    else this.perNote.delete(file.path);
+    void this.updateBlame(file);
+    new Notice(`Git Lens: blame for "${file.basename}" ${on ? "on" : "off"}`);
   }
 
   private vaultBase(): string {
@@ -157,12 +184,21 @@ export default class GitLensPlugin extends Plugin {
     return (view.editor as unknown as { cm?: EditorView }).cm ?? null;
   }
 
-  /** Compute blame for a file and push it into the active editor. */
+  /** Compute blame for a file and push it into the active editor — or clear it. */
   async updateBlame(file: TFile): Promise<void> {
-    if (!this.settings.enableGutter) return; // gutter off: do no git work, log nothing
     if (file.extension !== "md") return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view || view.file?.path !== file.path) return;
+    const cmEarly = this.getEditorView(view);
+
+    // Not blaming this note (global off and not per-note opted in): clear any
+    // existing markers and do no git work / logging.
+    if (!this.shouldBlame(file)) {
+      if (cmEarly && readBlameContext(cmEarly.state)?.result) {
+        cmEarly.dispatch({ effects: setBlame.of({ result: null, settings: this.settings }) });
+      }
+      return;
+    }
 
     const result = await this.git.blame(this.absPath(file), file.stat.mtime);
     this.log(
@@ -194,9 +230,8 @@ export default class GitLensPlugin extends Plugin {
     cm.dispatch({ effects: setBlame.of({ result, settings: this.settings }) });
   }
 
-  /** Re-blame whatever file is currently active and sync gutter visibility. */
+  /** Re-blame whatever file is currently active. */
   refreshActive(): void {
-    this.applyGutterVisibility();
     const file = this.app.workspace.getActiveFile();
     if (file) void this.updateBlame(file);
   }
@@ -327,6 +362,6 @@ export default class GitLensPlugin extends Plugin {
   }
 
   onunload(): void {
-    document.body.classList.remove("git-lens-off");
+    this.git.clear();
   }
 }

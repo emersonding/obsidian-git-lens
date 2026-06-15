@@ -5,11 +5,6 @@
   color: var(--text-muted);
 }
 
-/* Collapse the gutter entirely when blame is disabled. */
-body.git-lens-off .git-lens-gutter {
-  display: none;
-}
-
 .git-lens-annot {
   display: flex;
   gap: 0.5em;
