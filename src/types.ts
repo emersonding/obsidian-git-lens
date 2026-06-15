@@ -31,13 +31,16 @@ export interface GitLensSettings {
   showHash: boolean;
   /** Tint the left border of each annotation by commit age. */
   colorByAge: boolean;
+  /** git binary to use; absolute path if "git" isn't on Obsidian's PATH. */
+  gitPath: string;
 }
 
 export const DEFAULT_SETTINGS: GitLensSettings = {
   enableGutter: true,
-  dateStyle: "relative",
-  showHash: true,
+  dateStyle: "absolute",
+  showHash: false,
   colorByAge: true,
+  gitPath: "git",
 };
 
 /** Hash git uses for the synthetic "Not Committed Yet" commit. */

@@ -28,6 +28,7 @@ export default class GitLensPlugin extends Plugin {
       return;
     }
 
+    this.applyGitConfig();
     this.applyGutterVisibility();
 
     this.registerEditorExtension(
@@ -42,6 +43,15 @@ export default class GitLensPlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
+        if (file) void this.updateBlame(file);
+      }),
+    );
+
+    // Re-blame when switching panes/notes (also catches editors that only got
+    // the gutter extension attached after this plugin was enabled).
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        const file = this.app.workspace.getActiveFile();
         if (file) void this.updateBlame(file);
       }),
     );
@@ -86,13 +96,40 @@ export default class GitLensPlugin extends Plugin {
       callback: () => this.blameCurrentLine(),
     });
 
+    this.addCommand({
+      id: "diagnose",
+      name: "Diagnose blame for current file",
+      callback: () => void this.diagnose(),
+    });
+
     this.addRibbonIcon("git-branch", "Git Lens: toggle blame gutter", () => void this.toggleGutter());
 
-    // Blame whatever is already open once the workspace is ready.
+    // Verify git is reachable; warn early if not (common macOS GUI PATH issue).
+    void this.git
+      .version(this.vaultBase())
+      .then((v) => this.log(`git available: ${v}`))
+      .catch(() => {
+        this.log("git NOT found — set an absolute path in Git Lens settings");
+        new Notice(
+          "Git Lens: couldn't run 'git'. Set the git path in Git Lens settings (e.g. /usr/bin/git).",
+          12000,
+        );
+      });
+
+    // Attach the gutter to any already-open editors, then blame the active note.
     this.app.workspace.onLayoutReady(() => {
+      this.app.workspace.updateOptions();
       const file = this.app.workspace.getActiveFile();
       if (file) void this.updateBlame(file);
     });
+
+    this.log("loaded");
+  }
+
+  /** Push the configured git path into the service and drop stale cache. */
+  applyGitConfig(): void {
+    this.git.gitPath = this.settings.gitPath || "git";
+    this.git.clear();
   }
 
   private async toggleGutter(): Promise<void> {
@@ -106,11 +143,14 @@ export default class GitLensPlugin extends Plugin {
     document.body.classList.toggle("git-lens-off", !this.settings.enableGutter);
   }
 
+  private vaultBase(): string {
+    const adapter = this.app.vault.adapter;
+    return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : ".";
+  }
+
   /** Absolute filesystem path for a vault file (desktop FileSystemAdapter). */
   private absPath(file: TFile): string {
-    const adapter = this.app.vault.adapter;
-    const base = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : "";
-    return `${base}/${file.path}`;
+    return `${this.vaultBase()}/${file.path}`;
   }
 
   /** The underlying CodeMirror 6 EditorView for a Markdown view. */
@@ -126,12 +166,25 @@ export default class GitLensPlugin extends Plugin {
     if (!view || view.file?.path !== file.path) return;
 
     const result = await this.git.blame(this.absPath(file), file.stat.mtime);
+    this.log(
+      `blame ${file.path}: ${result ? `${result.lines.length} lines (${result.repoRoot})` : "no git repo / untracked"}`,
+    );
 
     // The active view may have changed while we awaited git; re-check.
     const current = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!current || current.file?.path !== file.path) return;
     const cm = this.getEditorView(current);
-    if (!cm) return;
+    if (!cm) {
+      this.log("no CM6 editor view (reading mode?)");
+      return;
+    }
+
+    // If our gutter field isn't on this editor yet, force a reconfigure so the
+    // dispatched effect has somewhere to land.
+    if (readBlameContext(cm.state) === null) {
+      this.log("gutter extension not attached yet; calling updateOptions()");
+      this.app.workspace.updateOptions();
+    }
 
     cm.dispatch({ effects: setBlame.of({ result, settings: this.settings }) });
   }
@@ -166,6 +219,46 @@ export default class GitLensPlugin extends Plugin {
       ? { x: coords.left, y: coords.bottom }
       : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     new BlamePopup(this.app, this.git, blame, ctx.result.repoRoot).showAt(point);
+  }
+
+  /** Report the full blame pipeline state for the active file. */
+  private async diagnose(): Promise<void> {
+    const lines: string[] = [];
+    lines.push(`desktop: ${Platform.isDesktopApp}`);
+    lines.push(`gutter enabled: ${this.settings.enableGutter}`);
+    lines.push(`git path: ${this.git.gitPath}`);
+
+    try {
+      lines.push(`git: ${await this.git.version(this.vaultBase())}`);
+    } catch {
+      lines.push("git: NOT FOUND on PATH (set an absolute path in settings)");
+    }
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    lines.push(`markdown view: ${!!view}`);
+    const file = view?.file ?? this.app.workspace.getActiveFile();
+    lines.push(`file: ${file?.path ?? "none"}`);
+    const cm = view ? this.getEditorView(view) : null;
+    lines.push(`CM6 editor: ${!!cm}`);
+    lines.push(`gutter attached: ${cm ? readBlameContext(cm.state) !== null : "n/a"}`);
+
+    if (file) {
+      const abs = this.absPath(file);
+      const root = await this.git.getRepoRoot(abs);
+      lines.push(`repo root: ${root ?? "not a git repo / untracked"}`);
+      if (root) {
+        const result = await this.git.blame(abs, file.stat.mtime);
+        lines.push(`blame lines: ${result ? result.lines.length : "null"}`);
+      }
+    }
+
+    const msg = lines.join("\n");
+    this.log(`diagnose\n${msg}`);
+    new Notice(`Git Lens diagnose:\n${msg}`, 20000);
+  }
+
+  private log(msg: string): void {
+    console.log(`[Git Lens] ${msg}`);
   }
 
   async loadSettings(): Promise<void> {

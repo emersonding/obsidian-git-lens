@@ -24,6 +24,7 @@
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.20.2",
     "obsidian": "latest",
+    "puppeteer-core": "^25.1.0",
     "typescript": "^5.4.5",
     "vitest": "^1.5.0"
   }

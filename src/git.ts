@@ -11,20 +11,42 @@ interface CacheEntry {
 }
 
 /**
+ * Augment PATH with common git locations. GUI apps on macOS (Obsidian launched
+ * from Finder/Dock) frequently inherit a minimal PATH that omits Homebrew and
+ * even /usr/bin, so a bare `git` can fail with ENOENT despite git being installed.
+ */
+function gitEnv(): NodeJS.ProcessEnv {
+  if (process.platform === "win32") return process.env;
+  const extra = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin"];
+  const current = process.env.PATH ? process.env.PATH.split(":") : [];
+  const merged = Array.from(new Set([...current, ...extra])).filter(Boolean).join(":");
+  return { ...process.env, PATH: merged };
+}
+
+/**
  * Runs git via child_process to compute per-line blame. Desktop only.
  * All commands use an argument array (never a shell string), so paths with
  * spaces or unicode are handled safely.
  */
 export class GitBlameService {
+  /** git binary to invoke; override with an absolute path when not on PATH. */
+  gitPath = "git";
+
   private cache = new Map<string, CacheEntry>();
 
   private async run(cwd: string, args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync("git", args, {
+    const { stdout } = await execFileAsync(this.gitPath, args, {
       cwd,
+      env: gitEnv(),
       maxBuffer: 64 * 1024 * 1024,
       windowsHide: true,
     });
     return stdout;
+  }
+
+  /** `git --version`; rejects (ENOENT) if the binary can't be found. */
+  async version(cwd: string): Promise<string> {
+    return (await this.run(cwd, ["--version"])).trim();
   }
 
   /** Repository root containing a file, or null if it isn't in a git repo. */

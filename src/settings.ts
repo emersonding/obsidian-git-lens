@@ -61,5 +61,24 @@ export class GitLensSettingTab extends PluginSettingTab {
           this.plugin.refreshActive();
         }),
       );
+
+    new Setting(containerEl)
+      .setName("Git executable")
+      .setDesc(
+        "Path to the git binary. Set an absolute path (e.g. /usr/bin/git or " +
+          "/opt/homebrew/bin/git) if the gutter never appears — Obsidian launched " +
+          "from Finder/Dock can have a PATH that doesn't include git.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("git")
+          .setValue(this.plugin.settings.gitPath)
+          .onChange(async (v) => {
+            this.plugin.settings.gitPath = v.trim() || "git";
+            await this.plugin.saveSettings();
+            this.plugin.applyGitConfig();
+            this.plugin.refreshActive();
+          }),
+      );
   }
 }

@@ -56,7 +56,6 @@ export function readBlameContext(state: EditorState): BlameContext | null {
 class BlameMarker extends GutterMarker {
   constructor(
     private readonly blame: BlameLine,
-    private readonly firstOfRun: boolean,
     private readonly settings: GitLensSettings,
   ) {
     super();
@@ -65,7 +64,7 @@ class BlameMarker extends GutterMarker {
   eq(other: BlameMarker): boolean {
     return (
       other.blame.hash === this.blame.hash &&
-      other.firstOfRun === this.firstOfRun &&
+      other.blame.authorTime === this.blame.authorTime &&
       other.settings === this.settings
     );
   }
@@ -73,23 +72,18 @@ class BlameMarker extends GutterMarker {
   toDOM(): HTMLElement {
     const el = document.createElement("div");
     el.className = "git-lens-annot";
-    if (this.blame.isUncommitted) el.classList.add("git-lens-uncommitted");
 
-    if (this.settings.colorByAge && !this.blame.isUncommitted) {
-      el.style.borderLeftColor = ageColor(this.blame.authorTime);
-    }
-
-    // Only the first line of a consecutive same-commit run shows text; the rest
-    // keep just the colored bar (JetBrains-style grouping).
-    if (this.firstOfRun) {
-      if (this.blame.isUncommitted) {
-        el.appendChild(span("git-lens-date", "Uncommitted"));
-      } else {
-        if (this.settings.showHash) {
-          el.appendChild(span("git-lens-hash", shortHash(this.blame.hash)));
-        }
-        el.appendChild(span("git-lens-date", formatDate(this.blame.authorTime, this.settings.dateStyle)));
+    if (this.blame.isUncommitted) {
+      el.classList.add("git-lens-uncommitted");
+      el.appendChild(span("git-lens-date", "Uncommitted"));
+    } else {
+      if (this.settings.colorByAge) {
+        el.style.borderLeftColor = ageColor(this.blame.authorTime);
       }
+      if (this.settings.showHash) {
+        el.appendChild(span("git-lens-hash", shortHash(this.blame.hash)));
+      }
+      el.appendChild(span("git-lens-date", formatDate(this.blame.authorTime, this.settings.dateStyle)));
     }
 
     el.setAttribute("aria-label", tooltipText(this.blame));
@@ -97,6 +91,19 @@ class BlameMarker extends GutterMarker {
     return el;
   }
 }
+
+/** Reserves a stable gutter width so annotations never collapse to a sliver. */
+class SpacerMarker extends GutterMarker {
+  toDOM(): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "git-lens-annot";
+    el.appendChild(span("git-lens-hash", "0000000"));
+    el.appendChild(span("git-lens-date", "0000-00-00"));
+    return el;
+  }
+}
+
+const spacerMarker = new SpacerMarker();
 
 function span(cls: string, text: string): HTMLSpanElement {
   const s = document.createElement("span");
@@ -115,10 +122,8 @@ function buildMarkers(doc: Text, ctx: BlameContext): RangeSet<GutterMarker> {
   for (let n = 1; n <= total; n++) {
     const blame = blameLines[n - 1];
     if (!blame) continue;
-    const prev = n > 1 ? blameLines[n - 2] : undefined;
-    const firstOfRun = !prev || prev.hash !== blame.hash;
     const from = doc.line(n).from;
-    builder.add(from, from, new BlameMarker(blame, firstOfRun, ctx.settings));
+    builder.add(from, from, new BlameMarker(blame, ctx.settings));
   }
 
   return builder.finish();
@@ -147,6 +152,7 @@ export function blameExtension(deps: BlameGutterDeps): Extension {
     gutter({
       class: "git-lens-gutter",
       markers: (view) => view.state.field(blameMarkersField),
+      initialSpacer: () => spacerMarker,
       domEventHandlers: {
         mousedown: (view, line, event) => handleGutterEvent(view, line.from, event, deps),
         contextmenu: (view, line, event) => handleGutterEvent(view, line.from, event, deps),
