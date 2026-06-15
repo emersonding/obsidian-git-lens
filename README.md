@@ -90,10 +90,11 @@ ciphertext in git, so plain `git blame` is meaningless. Git Lens still blames th
 (the one git-crypt writes into `.git/config`) and attributing lines incrementally with an
 LCS diff. Caveats:
 
-- First open of a heavily-committed encrypted note is slower (it decrypts every revision);
-  results are cached per file until you edit/save.
+- First open of a heavily-committed encrypted note is slow (it decrypts every revision —
+  e.g. ~30s for a 300-commit note). The decrypted history is then cached by the file's HEAD
+  commit, so editing/saving stays fast (~0.2s) and only a *new* commit triggers a re-decrypt.
 - Falls back to no gutter if the repo is locked / textconv can't decrypt, or for files with
-  more than 150 revisions or 2000 lines.
+  more than 1000 revisions or 2000 lines.
 
 ## Known limitations
 

@@ -57,6 +57,19 @@ export function ageColor(epochSeconds: number): string {
   return `hsl(${hue}, ${sat}%, ${light}%)`;
 }
 
+/**
+ * Deterministic, distinct color per commit so adjacent lines from different
+ * commits get clearly different bars regardless of how close their dates are.
+ */
+export function commitColor(hash: string): string {
+  let h = 0;
+  for (let i = 0; i < hash.length; i++) h = (Math.imul(h, 31) + hash.charCodeAt(i)) | 0;
+  const hue = ((h % 360) + 360) % 360;
+  // Vary lightness slightly by a second hash bucket so similar hues still separate.
+  const light = 45 + (((h >>> 8) % 3) * 8);
+  return `hsl(${hue}, 70%, ${light}%)`;
+}
+
 /** One-line tooltip for an annotation. */
 export function tooltipText(blame: BlameLine): string {
   if (blame.isUncommitted) return "Uncommitted changes";

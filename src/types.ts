@@ -30,6 +30,9 @@ export interface BlameResult {
 
 export type DateStyle = "relative" | "absolute";
 
+/** How the left annotation bar is colored. */
+export type ColorMode = "commit" | "age" | "none";
+
 /** Structured snapshot of the blame pipeline for the active file. Drives both the
  *  "Diagnose" Notice and the automated E2E assertions. */
 export interface BlameStats {
@@ -56,8 +59,8 @@ export interface GitLensSettings {
   dateStyle: DateStyle;
   /** Show the short commit hash in the gutter. */
   showHash: boolean;
-  /** Tint the left border of each annotation by commit age. */
-  colorByAge: boolean;
+  /** How the left annotation bar is colored (per-commit, by age, or off). */
+  colorMode: ColorMode;
   /** git binary to use; absolute path if "git" isn't on Obsidian's PATH. */
   gitPath: string;
 }
@@ -66,7 +69,7 @@ export const DEFAULT_SETTINGS: GitLensSettings = {
   enableGutter: true,
   dateStyle: "absolute",
   showHash: false,
-  colorByAge: true,
+  colorMode: "commit",
   gitPath: "git",
 };
 

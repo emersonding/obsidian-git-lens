@@ -34,6 +34,7 @@ export class GitBlameService {
   gitPath = "git";
 
   private cache = new Map<string, CacheEntry>();
+  private textconvCache = new Map<string, TextconvCacheEntry>();
 
   private async run(cwd: string, args: string[]): Promise<string> {
     const { stdout } = await execFileAsync(this.gitPath, args, {
@@ -87,6 +88,7 @@ export class GitBlameService {
 
   clear(): void {
     this.cache.clear();
+    this.textconvCache.clear();
   }
 
   /**
@@ -156,6 +158,55 @@ export class GitBlameService {
     const dir = path.dirname(absFile);
     const base = path.basename(absFile);
 
+    // The decrypted committed history only changes when a new commit touches the
+    // file, so cache it keyed by the file's newest commit hash. Local edits then
+    // cost only one diff of the working tree against the cached newest version,
+    // instead of re-decrypting every revision on every save.
+    let head: string;
+    try {
+      head = (await this.run(dir, ["log", "-1", "--format=%H", "--", base])).trim();
+    } catch {
+      return null;
+    }
+    if (!head) return null;
+
+    let entry = this.textconvCache.get(absFile);
+    if (!entry || entry.head !== head) {
+      const built = await this.buildTextconvHistory(dir, base, head);
+      if (!built) return null;
+      entry = built;
+      this.textconvCache.set(absFile, entry);
+    }
+
+    // Map the cached committed blame onto the current decrypted working-tree content.
+    let finalLines: string[];
+    try {
+      finalLines = splitLines(await readFile(absFile, "utf8"));
+    } catch {
+      finalLines = entry.committedLines;
+    }
+    const blameHashes = applyWorkingTree(entry.committedLines, entry.committedBlame, finalLines);
+
+    return blameHashes.map((hash) => {
+      const isUncommitted = /^0+$/.test(hash);
+      const m = entry!.meta.get(hash);
+      return {
+        hash: isUncommitted ? ZERO_HASH : hash,
+        author: isUncommitted ? "" : m?.author ?? "",
+        authorMail: isUncommitted ? "" : m?.authorMail ?? "",
+        authorTime: isUncommitted ? 0 : m?.authorTime ?? 0,
+        summary: isUncommitted ? "" : m?.summary ?? "",
+        isUncommitted,
+      };
+    });
+  }
+
+  /** Decrypt every revision of a file and blame its newest committed version. */
+  private async buildTextconvHistory(
+    dir: string,
+    base: string,
+    head: string,
+  ): Promise<TextconvCacheEntry | null> {
     let hashes: string[];
     try {
       const log = await this.run(dir, ["log", "--format=%H", "--reverse", "--", base]);
@@ -180,29 +231,12 @@ export class GitBlameService {
     }
     if (versions.length === 0) return null;
 
-    // The working-tree file is the decrypted plaintext the editor shows.
-    let finalLines: string[];
-    try {
-      finalLines = splitLines(await readFile(absFile, "utf8"));
-    } catch {
-      finalLines = versions[versions.length - 1].lines;
-    }
-
-    const blameHashes = computeIncrementalBlame(versions, finalLines);
-    const meta = await this.commitMeta(dir, base);
-
-    return blameHashes.map((hash) => {
-      const isUncommitted = /^0+$/.test(hash);
-      const m = meta.get(hash);
-      return {
-        hash: isUncommitted ? ZERO_HASH : hash,
-        author: isUncommitted ? "" : m?.author ?? "",
-        authorMail: isUncommitted ? "" : m?.authorMail ?? "",
-        authorTime: isUncommitted ? 0 : m?.authorTime ?? 0,
-        summary: isUncommitted ? "" : m?.summary ?? "",
-        isUncommitted,
-      };
-    });
+    return {
+      head,
+      committedLines: versions[versions.length - 1].lines,
+      committedBlame: committedBlame(versions),
+      meta: await this.commitMeta(dir, base),
+    };
   }
 
   /** Map of commit hash -> author/date/summary for every commit touching a file. */
@@ -289,13 +323,22 @@ export function parsePorcelain(out: string): BlameLine[] {
   return lines;
 }
 
-/** Caps that keep decryption-aware blame from being pathologically slow. */
-const MAX_DECRYPT_REVISIONS = 150;
+/** Caps that keep decryption-aware blame from being pathologically slow. The
+ *  per-revision decryption only runs when the file's HEAD changes (see the textconv
+ *  cache), so a high revision cap is affordable — local edits never re-decrypt. */
+const MAX_DECRYPT_REVISIONS = 1000;
 const MAX_DECRYPT_LINES = 2000;
 
 interface TextconvVersion {
   hash: string;
   lines: string[];
+}
+
+interface TextconvCacheEntry {
+  head: string;
+  committedLines: string[];
+  committedBlame: string[];
+  meta: Map<string, CommitMeta>;
 }
 
 /** Split like CodeMirror counts lines: a trailing "\n" yields a final empty line. */
@@ -347,6 +390,25 @@ function alignLines(prev: string[], cur: string[]): Int32Array {
   return match;
 }
 
+/** Incremental blame for the NEWEST committed version (no working-tree step). */
+function committedBlame(versions: { hash: string; lines: string[] }[]): string[] {
+  if (versions.length === 0) return [];
+  let blame = versions[0].lines.map(() => versions[0].hash);
+  for (let k = 1; k < versions.length; k++) {
+    const match = alignLines(versions[k - 1].lines, versions[k].lines);
+    const prev = blame;
+    blame = versions[k].lines.map((_, j) => (match[j] >= 0 ? prev[match[j]] : versions[k].hash));
+  }
+  return blame;
+}
+
+/** Map committed blame onto the current working-tree content; new lines are uncommitted. */
+function applyWorkingTree(committedLines: string[], blame: string[], finalLines: string[]): string[] {
+  const ZERO = "0".repeat(40);
+  const match = alignLines(committedLines, finalLines);
+  return finalLines.map((_, j) => (match[j] >= 0 ? blame[match[j]] : ZERO));
+}
+
 /**
  * Walk decrypted versions oldest -> newest and attribute each line of the final
  * (working-tree) content to the commit that last introduced it. Lines absent from
@@ -356,16 +418,6 @@ export function computeIncrementalBlame(
   versions: { hash: string; lines: string[] }[],
   finalLines: string[],
 ): string[] {
-  const ZERO = "0".repeat(40);
-  if (versions.length === 0) return finalLines.map(() => ZERO);
-
-  let blame: string[] = versions[0].lines.map(() => versions[0].hash);
-  for (let k = 1; k < versions.length; k++) {
-    const match = alignLines(versions[k - 1].lines, versions[k].lines);
-    const prevBlame = blame;
-    blame = versions[k].lines.map((_, j) => (match[j] >= 0 ? prevBlame[match[j]] : versions[k].hash));
-  }
-
-  const match = alignLines(versions[versions.length - 1].lines, finalLines);
-  return finalLines.map((_, j) => (match[j] >= 0 ? blame[match[j]] : ZERO));
+  if (versions.length === 0) return finalLines.map(() => "0".repeat(40));
+  return applyWorkingTree(versions[versions.length - 1].lines, committedBlame(versions), finalLines);
 }

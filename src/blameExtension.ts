@@ -9,7 +9,7 @@ import {
   Text,
 } from "@codemirror/state";
 import { BlameLine, BlameResult, DEFAULT_SETTINGS, GitLensSettings } from "./types";
-import { ageColor, formatDate, shortHash, tooltipText } from "./format";
+import { ageColor, commitColor, formatDate, shortHash, tooltipText } from "./format";
 
 /** Everything the gutter needs to render and to answer click events. */
 export interface BlameContext {
@@ -73,7 +73,9 @@ class BlameMarker extends GutterMarker {
     return (
       other.blame.hash === this.blame.hash &&
       other.blame.authorTime === this.blame.authorTime &&
-      other.settings === this.settings
+      other.settings.colorMode === this.settings.colorMode &&
+      other.settings.dateStyle === this.settings.dateStyle &&
+      other.settings.showHash === this.settings.showHash
     );
   }
 
@@ -85,7 +87,9 @@ class BlameMarker extends GutterMarker {
       el.classList.add("git-lens-uncommitted");
       el.appendChild(span("git-lens-date", "Uncommitted"));
     } else {
-      if (this.settings.colorByAge) {
+      if (this.settings.colorMode === "commit") {
+        el.style.borderLeftColor = commitColor(this.blame.hash);
+      } else if (this.settings.colorMode === "age") {
         el.style.borderLeftColor = ageColor(this.blame.authorTime);
       }
       if (this.settings.showHash) {

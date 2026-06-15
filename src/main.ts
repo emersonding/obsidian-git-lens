@@ -159,6 +159,7 @@ export default class GitLensPlugin extends Plugin {
 
   /** Compute blame for a file and push it into the active editor. */
   async updateBlame(file: TFile): Promise<void> {
+    if (!this.settings.enableGutter) return; // gutter off: do no git work, log nothing
     if (file.extension !== "md") return;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view || view.file?.path !== file.path) return;

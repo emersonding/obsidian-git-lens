@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type GitLensPlugin from "./main";
-import { DateStyle } from "./types";
+import { ColorMode, DateStyle } from "./types";
 
 export class GitLensSettingTab extends PluginSettingTab {
   constructor(
@@ -52,14 +52,19 @@ export class GitLensSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Color by age")
-      .setDesc("Tint each annotation's left border based on how old the commit is.")
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.colorByAge).onChange(async (v) => {
-          this.plugin.settings.colorByAge = v;
-          await this.plugin.saveSettings();
-          this.plugin.refreshActive();
-        }),
+      .setName("Bar color")
+      .setDesc("How the left annotation bar is colored.")
+      .addDropdown((d) =>
+        d
+          .addOption("commit", "By commit (distinct color per commit)")
+          .addOption("age", "By age (gradient)")
+          .addOption("none", "None")
+          .setValue(this.plugin.settings.colorMode)
+          .onChange(async (v) => {
+            this.plugin.settings.colorMode = v as ColorMode;
+            await this.plugin.saveSettings();
+            this.plugin.refreshActive();
+          }),
       );
 
     new Setting(containerEl)
