@@ -20,6 +20,12 @@ export interface BlameResult {
   absFile: string;
   /** lines[i] corresponds to document line i+1. */
   lines: BlameLine[];
+  /**
+   * Set when blame is meaningless for this file (e.g. git-crypt encrypted: git
+   * only stores whole-file ciphertext, so there is no per-line plaintext history).
+   * When present, `lines` is empty and no gutter is drawn.
+   */
+  unavailableReason?: string;
 }
 
 export type DateStyle = "relative" | "absolute";

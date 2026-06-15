@@ -59,6 +59,27 @@ export class GitBlameService {
     }
   }
 
+  /**
+   * If the file is run through an encrypting clean/smudge filter (git-crypt &
+   * friends), return the filter name. Blame is meaningless for such files since
+   * git stores ciphertext, not the plaintext you see.
+   */
+  async encryptedFilter(absFile: string): Promise<string | null> {
+    try {
+      const out = await this.run(path.dirname(absFile), [
+        "check-attr",
+        "filter",
+        "--",
+        path.basename(absFile),
+      ]);
+      // Output: "<file>: filter: <value>"
+      const value = /: filter: (.+)$/m.exec(out.trim())?.[1]?.trim();
+      return value && /crypt/i.test(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
   invalidate(absFile: string): void {
     this.cache.delete(absFile);
   }
@@ -79,16 +100,23 @@ export class GitBlameService {
     try {
       const repoRoot = await this.getRepoRoot(absFile);
       if (repoRoot) {
-        // Run from the file's own directory with its basename so we never depend
-        // on path.relative(), which breaks when the vault sits under a symlinked
-        // prefix (e.g. /var -> /private/var on macOS) that git canonicalizes.
-        const out = await this.run(path.dirname(absFile), [
-          "blame",
-          "--line-porcelain",
-          "--",
-          path.basename(absFile),
-        ]);
-        result = { repoRoot, absFile, lines: parsePorcelain(out) };
+        const crypt = await this.encryptedFilter(absFile);
+        if (crypt) {
+          // git only stores whole-file ciphertext, re-encrypted each commit, so
+          // per-line blame of the decrypted text is impossible. Skip it.
+          result = { repoRoot, absFile, lines: [], unavailableReason: `encrypted (${crypt})` };
+        } else {
+          // Run from the file's own directory with its basename so we never depend
+          // on path.relative(), which breaks when the vault sits under a symlinked
+          // prefix (e.g. /var -> /private/var on macOS) that git canonicalizes.
+          const out = await this.run(path.dirname(absFile), [
+            "blame",
+            "--line-porcelain",
+            "--",
+            path.basename(absFile),
+          ]);
+          result = { repoRoot, absFile, lines: parsePorcelain(out) };
+        }
       }
     } catch {
       // Untracked file, git missing, etc. — treat as "no blame".

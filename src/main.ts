@@ -165,7 +165,13 @@ export default class GitLensPlugin extends Plugin {
 
     const result = await this.git.blame(this.absPath(file), file.stat.mtime);
     this.log(
-      `blame ${file.path}: ${result ? `${result.lines.length} lines (${result.repoRoot})` : "no git repo / untracked"}`,
+      `blame ${file.path}: ${
+        result
+          ? result.unavailableReason
+            ? `unavailable — ${result.unavailableReason}`
+            : `${result.lines.length} lines (${result.repoRoot})`
+          : "no git repo / untracked"
+      }`,
     );
 
     // The active view may have changed while we awaited git; re-check.
@@ -257,7 +263,9 @@ export default class GitLensPlugin extends Plugin {
       lines.push(`repo root: ${root ?? "not a git repo / untracked"}`);
       if (root) {
         const result = await this.git.blame(abs, file.stat.mtime);
-        if (result) {
+        if (result?.unavailableReason) {
+          lines.push(`blame: unavailable — ${result.unavailableReason}`);
+        } else if (result) {
           lines.push(`blame lines: ${result.lines.length}`);
           lines.push(`distinct commits: ${new Set(result.lines.map((l) => l.hash)).size}`);
         } else {
