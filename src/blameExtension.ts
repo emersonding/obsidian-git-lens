@@ -17,14 +17,8 @@ export interface BlameContext {
   settings: GitLensSettings;
 }
 
-/** Coordinates (viewport-relative) used to position the popup. */
-export interface ClickCoords {
-  x: number;
-  y: number;
-}
-
 export interface BlameGutterDeps {
-  onLineClick: (blame: BlameLine, repoRoot: string, coords: ClickCoords) => void;
+  onLineClick: (blame: BlameLine, result: BlameResult) => void;
 }
 
 /** Dispatch this effect to push fresh blame data into an editor. */
@@ -44,7 +38,16 @@ const blameMarkersField = StateField.define<RangeSet<GutterMarker>>({
   create: () => RangeSet.empty,
   update(markers, tr) {
     for (const e of tr.effects) if (e.is(setBlame)) return buildMarkers(tr.state.doc, e.value);
-    return tr.docChanged ? markers.map(tr.changes) : markers;
+    if (tr.docChanged) {
+      // When lines are added/removed (incl. the document finishing loading after
+      // a blame dispatch), rebuild so every current line gets a marker. For pure
+      // intra-line edits, remapping positions is enough and cheaper.
+      if (tr.startState.doc.lines !== tr.state.doc.lines) {
+        return buildMarkers(tr.state.doc, tr.state.field(blameDataField));
+      }
+      return markers.map(tr.changes);
+    }
+    return markers;
   },
 });
 
@@ -144,8 +147,7 @@ function handleGutterEvent(view: EditorView, lineFrom: number, event: Event, dep
 
   event.preventDefault();
   event.stopPropagation();
-  const mouse = event as MouseEvent;
-  deps.onLineClick(blame, ctx.result.repoRoot, { x: mouse.clientX, y: mouse.clientY });
+  deps.onLineClick(blame, ctx.result);
   return true;
 }
 

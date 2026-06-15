@@ -65,12 +65,13 @@ describe("GitBlameService (real git)", () => {
     expect(a).toBe(b); // same cached reference
   });
 
-  it("returns the full commit diff via show()", async () => {
+  it("returns the commit diff for a single file via show()", async () => {
     const svc = new GitBlameService();
-    const root = git(["rev-parse", "--show-toplevel"], repo);
-    const diff = await svc.show(root, firstHash);
+    const diff = await svc.show(filePath, firstHash);
     expect(diff).toContain("Initial commit");
     expect(diff).toContain("+# Title");
+    // Scoped to note.md only — no other file paths in the diff.
+    expect(diff).toContain("note.md");
   });
 
   it("returns null outside a git repo", async () => {

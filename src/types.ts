@@ -16,6 +16,8 @@ export interface BlameLine {
 /** Result of blaming a file: its repo root plus 1-based per-line attribution. */
 export interface BlameResult {
   repoRoot: string;
+  /** Absolute path of the blamed file (used to scope `git show` to this file). */
+  absFile: string;
   /** lines[i] corresponds to document line i+1. */
   lines: BlameLine[];
 }

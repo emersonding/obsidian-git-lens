@@ -88,7 +88,7 @@ export class GitBlameService {
           "--",
           path.basename(absFile),
         ]);
-        result = { repoRoot, lines: parsePorcelain(out) };
+        result = { repoRoot, absFile, lines: parsePorcelain(out) };
       }
     } catch {
       // Untracked file, git missing, etc. — treat as "no blame".
@@ -99,9 +99,18 @@ export class GitBlameService {
     return result;
   }
 
-  /** Full `git show <hash>` output for the diff modal. */
-  async show(repoRoot: string, hash: string): Promise<string> {
-    return this.run(repoRoot, ["show", "--no-color", hash]);
+  /**
+   * `git show <hash>` for the diff modal, scoped to a single file. Runs from the
+   * file's own directory with its basename (symlink-safe, like blame).
+   */
+  async show(absFile: string, hash: string): Promise<string> {
+    return this.run(path.dirname(absFile), [
+      "show",
+      "--no-color",
+      hash,
+      "--",
+      path.basename(absFile),
+    ]);
   }
 }
 

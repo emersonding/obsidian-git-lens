@@ -11,9 +11,9 @@ import {
 import type { EditorView } from "@codemirror/view";
 import { GitBlameService } from "./git";
 import { blameExtension, blameMarkerCount, readBlameContext, setBlame } from "./blameExtension";
-import { BlamePopup } from "./popup";
+import { DiffModal } from "./diff";
 import { GitLensSettingTab } from "./settings";
-import { DEFAULT_SETTINGS, GitLensSettings } from "./types";
+import { BlameLine, BlameResult, DEFAULT_SETTINGS, GitLensSettings } from "./types";
 
 export default class GitLensPlugin extends Plugin {
   settings: GitLensSettings = DEFAULT_SETTINGS;
@@ -33,9 +33,7 @@ export default class GitLensPlugin extends Plugin {
 
     this.registerEditorExtension(
       blameExtension({
-        onLineClick: (blame, repoRoot, coords) => {
-          new BlamePopup(this.app, this.git, blame, repoRoot).showAt(coords);
-        },
+        onLineClick: (blame, result) => void this.openDiff(blame, result),
       }),
     );
 
@@ -123,7 +121,7 @@ export default class GitLensPlugin extends Plugin {
       if (file) void this.updateBlame(file);
     });
 
-    this.log("loaded");
+    this.log(`loaded v${this.manifest.version} (click gutter → diff)`);
   }
 
   /** Push the configured git path into the service and drop stale cache. */
@@ -196,7 +194,7 @@ export default class GitLensPlugin extends Plugin {
     if (file) void this.updateBlame(file);
   }
 
-  /** Open the commit popup for the caret's current line. */
+  /** Open the commit diff for the caret's current line. */
   private blameCurrentLine(): void {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) return;
@@ -209,16 +207,23 @@ export default class GitLensPlugin extends Plugin {
       return;
     }
 
-    const pos = cm.state.selection.main.head;
-    const lineNo = cm.state.doc.lineAt(pos).number;
+    const lineNo = cm.state.doc.lineAt(cm.state.selection.main.head).number;
     const blame = ctx.result.lines[lineNo - 1];
-    if (!blame) return;
+    if (blame) void this.openDiff(blame, ctx.result);
+  }
 
-    const coords = cm.coordsAtPos(pos);
-    const point = coords
-      ? { x: coords.left, y: coords.bottom }
-      : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    new BlamePopup(this.app, this.git, blame, ctx.result.repoRoot).showAt(point);
+  /** Show the commit that last changed a line, scoped to the current file. */
+  private async openDiff(blame: BlameLine, result: BlameResult): Promise<void> {
+    if (blame.isUncommitted) {
+      new Notice("Git Lens: line has uncommitted changes — no commit to show");
+      return;
+    }
+    try {
+      const diff = await this.git.show(result.absFile, blame.hash);
+      new DiffModal(this.app, blame, diff).open();
+    } catch {
+      new Notice("Git Lens: failed to load commit diff");
+    }
   }
 
   /** Report the full blame pipeline state for the active file. */
