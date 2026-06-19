@@ -3,6 +3,7 @@ import { GitBlameService } from "./git";
 import { BlameLine, ChangedFile, CommitInfo, HISTORY_PAGE_SIZE } from "./types";
 import { formatAbsolute, formatAge, shortHash } from "./format";
 import { DiffFileKind, parseDiff } from "./diffParse";
+import { planDiffRows } from "./wordDiff";
 
 /** Map a git --name-status letter to a label + the CSS modifier used for badges. */
 const STATUS_INFO: Record<string, { label: string; kind: DiffFileKind }> = {
@@ -22,14 +23,37 @@ const BADGE_LABEL: Record<DiffFileKind, string> = {
   binary: "binary",
 };
 
-/** Color +/- content rows; size each to its content so the tint spans full width. */
+const ROW_CLASS = {
+  add: "git-lens-add",
+  del: "git-lens-del",
+  hunk: "git-lens-hunk",
+  meta: "git-lens-meta",
+  context: "",
+} as const;
+
+/**
+ * Color +/- content rows; size each to its content so the tint spans full
+ * width. Replace blocks get word-level highlighting: the row keeps its base
+ * +/- tint, but only the changed words inside it get the strong tint.
+ */
 function renderBody(pre: HTMLElement, lines: string[]): void {
-  for (const line of lines) {
-    const row = pre.createEl("div", { text: line.length ? line : " " });
-    if (line.startsWith("+")) row.addClass("git-lens-add");
-    else if (line.startsWith("-")) row.addClass("git-lens-del");
-    else if (line.startsWith("@@")) row.addClass("git-lens-hunk");
-    else if (line.startsWith("Binary files") || line.startsWith("\\ ")) row.addClass("git-lens-meta");
+  for (const plan of planDiffRows(lines)) {
+    const cls = ROW_CLASS[plan.cls];
+    if (!plan.segments) {
+      const row = pre.createEl("div", { text: plan.text.length ? plan.text : " " });
+      if (cls) row.addClass(cls);
+      continue;
+    }
+    // Inline word diff: render the +/- marker, then a span per segment so only
+    // the changed words carry the strong tint.
+    const row = pre.createEl("div");
+    row.addClass(cls);
+    row.addClass("git-lens-word-row");
+    row.createSpan({ text: plan.text.slice(0, 1) }); // the +/- marker
+    for (const seg of plan.segments) {
+      const span = row.createSpan({ text: seg.text });
+      if (seg.changed) span.addClass(plan.cls === "add" ? "git-lens-word-add" : "git-lens-word-del");
+    }
   }
 }
 

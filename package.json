@@ -1,6 +1,6 @@
 {
   "name": "obsidian-git-lens",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Per-line git blame gutter for Obsidian (JetBrains-style annotate).",
   "main": "main.js",
   "scripts": {
@@ -29,5 +29,9 @@
     "puppeteer-core": "^25.1.0",
     "typescript": "^5.4.5",
     "vitest": "^1.5.0"
+  },
+  "dependencies": {
+    "@types/diff": "^7.0.2",
+    "diff": "^9.0.0"
   }
 }
