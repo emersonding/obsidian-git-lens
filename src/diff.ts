@@ -2,23 +2,62 @@ import { App, Modal, Notice } from "obsidian";
 import { GitBlameService } from "./git";
 import { BlameLine, CommitInfo } from "./types";
 import { formatAbsolute, formatAge, shortHash } from "./format";
+import { DiffFileKind, parseDiff } from "./diffParse";
+
+const BADGE_LABEL: Record<DiffFileKind, string> = {
+  added: "added",
+  deleted: "deleted",
+  renamed: "renamed",
+  modified: "modified",
+  binary: "binary",
+};
+
+/** Color +/- content rows; size each to its content so the tint spans full width. */
+function renderBody(pre: HTMLElement, lines: string[]): void {
+  for (const line of lines) {
+    const row = pre.createEl("div", { text: line.length ? line : " " });
+    if (line.startsWith("+")) row.addClass("git-lens-add");
+    else if (line.startsWith("-")) row.addClass("git-lens-del");
+    else if (line.startsWith("@@")) row.addClass("git-lens-hunk");
+    else if (line.startsWith("Binary files") || line.startsWith("\\ ")) row.addClass("git-lens-meta");
+  }
+}
 
 /**
- * Render unified-diff text into `el` with basic +/- coloring. Each row is sized
- * to its content (with a full-width floor) so the colored background spans the
- * whole line even when scrolled horizontally.
+ * Render unified-diff text into `el`: a compact commit preamble, then one clean
+ * header per file (badge + path) followed by its +/- colored hunks. Falls back
+ * to raw line rendering if the text isn't a recognizable file diff.
  */
 export function renderDiffInto(el: HTMLElement, diff: string): void {
   el.empty();
-  const pre = el.createEl("pre", { cls: "git-lens-diff" });
-  for (const line of diff.split("\n")) {
-    const row = pre.createEl("div", { text: line.length ? line : " " });
-    if (line.startsWith("+") && !line.startsWith("+++")) row.addClass("git-lens-add");
-    else if (line.startsWith("-") && !line.startsWith("---")) row.addClass("git-lens-del");
-    else if (line.startsWith("@@")) row.addClass("git-lens-hunk");
-    else if (line.startsWith("diff ") || line.startsWith("commit ") || line.startsWith("index ")) {
-      row.addClass("git-lens-meta");
+  const { preamble, files } = parseDiff(diff);
+
+  const message = preamble.join("\n").trim();
+  if (message) {
+    const head = el.createDiv({ cls: "git-lens-diff-commit" });
+    for (const line of preamble) {
+      if (line.startsWith("commit ")) continue; // hash is already in the title
+      head.createDiv({ text: line.replace(/^ {4}/, "") || " " });
     }
+  }
+
+  if (files.length === 0) {
+    // Not a file diff (or empty) — render verbatim with the old coloring.
+    renderBody(el.createEl("pre", { cls: "git-lens-diff" }), diff.split("\n"));
+    return;
+  }
+
+  for (const file of files) {
+    const header = el.createDiv({ cls: "git-lens-diff-file" });
+    header.createSpan({ cls: `git-lens-diff-badge is-${file.kind}`, text: BADGE_LABEL[file.kind] });
+    const name = header.createSpan({ cls: "git-lens-diff-path" });
+    if (file.oldPath) {
+      name.createSpan({ cls: "git-lens-diff-oldpath", text: file.oldPath });
+      name.createSpan({ cls: "git-lens-diff-arrow", text: " → " });
+    }
+    name.createSpan({ text: file.path || "(unknown)" });
+
+    if (file.body.length) renderBody(el.createEl("pre", { cls: "git-lens-diff" }), file.body);
   }
 }
 
@@ -36,6 +75,7 @@ export class DiffModal extends Modal {
   }
 
   onOpen(): void {
+    this.modalEl.addClass("git-lens-diff-modal");
     this.titleEl.setText(`${shortHash(this.blame.hash)} — ${this.blame.summary}`);
     renderDiffInto(this.contentEl, this.diff);
   }

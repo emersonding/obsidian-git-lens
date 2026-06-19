@@ -88,14 +88,18 @@
   margin-top: 10px;
 }
 
-/* ===== Diff modal ===== */
+/* ===== Diff view (shared by the line-click modal and the history viewer) ===== */
+/* The single-file diff modal scrolls its own content (both axes). */
+.git-lens-diff-modal .modal-content {
+  max-height: 70vh;
+  overflow: auto;
+}
+
 .git-lens-diff {
   margin: 0;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   white-space: pre;
-  overflow: auto;
-  max-height: 65vh;
   line-height: 1.45;
 }
 
@@ -108,6 +112,83 @@
   box-sizing: border-box;
 }
 
+/* Commit message preamble from `git show`, de-emphasized above the diff. */
+.git-lens-diff-commit {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+}
+
+/* Per-file subtitle header; sticks to the top of the scroll container. */
+.git-lens-diff-file {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 5px 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px 6px 0 0;
+  font-size: var(--font-ui-smaller);
+}
+
+.git-lens-diff-file:first-child {
+  margin-top: 0;
+}
+
+.git-lens-diff-path {
+  font-family: var(--font-monospace);
+  color: var(--text-normal);
+  word-break: break-all;
+}
+
+.git-lens-diff-oldpath {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.git-lens-diff-arrow {
+  color: var(--text-muted);
+}
+
+.git-lens-diff-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-on-accent, #fff);
+  background: var(--text-muted);
+}
+
+.git-lens-diff-badge.is-added {
+  background: rgba(46, 160, 67, 0.9);
+}
+
+.git-lens-diff-badge.is-deleted {
+  background: rgba(248, 81, 73, 0.9);
+}
+
+.git-lens-diff-badge.is-renamed {
+  background: var(--text-accent);
+}
+
+.git-lens-diff-badge.is-modified {
+  background: rgba(150, 150, 150, 0.85);
+}
+
+.git-lens-diff-badge.is-binary {
+  background: var(--text-faint);
+}
+
 .git-lens-add {
   background: rgba(46, 160, 67, 0.15);
 }
@@ -118,6 +199,7 @@
 
 .git-lens-hunk {
   color: var(--text-accent);
+  background: var(--background-secondary);
 }
 
 .git-lens-meta {
