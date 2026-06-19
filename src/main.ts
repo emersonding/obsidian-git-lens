@@ -13,7 +13,7 @@ import {
 import type { EditorView } from "@codemirror/view";
 import { GitBlameService } from "./git";
 import { blameExtension, blameMarkerCount, readBlameContext, setBlame } from "./blameExtension";
-import { DiffModal, HistoryModal } from "./diff";
+import { HistoryModal } from "./diff";
 import { GitLensSettingTab } from "./settings";
 import { BlameLine, BlameResult, BlameStats, DEFAULT_SETTINGS, GitLensSettings } from "./types";
 
@@ -37,7 +37,7 @@ export default class GitLensPlugin extends Plugin {
 
     this.registerEditorExtension(
       blameExtension({
-        onLineClick: (blame, result) => void this.openDiff(blame, result),
+        onLineClick: (blame, result) => void this.openLineHistory(blame, result),
       }),
     );
 
@@ -255,18 +255,15 @@ export default class GitLensPlugin extends Plugin {
     if (file) void this.updateBlame(file);
   }
 
-  /** Show the commit that last changed a line, scoped to the current file. */
-  private async openDiff(blame: BlameLine, result: BlameResult): Promise<void> {
+  /** Open this file's history viewer, focused on the commit that last changed
+   * the clicked line. */
+  private async openLineHistory(blame: BlameLine, result: BlameResult): Promise<void> {
     if (blame.isUncommitted) {
       new Notice("Git Lens: line has uncommitted changes — no commit to show");
       return;
     }
-    try {
-      const diff = await this.git.show(result.absFile, blame.hash);
-      new DiffModal(this.app, blame, diff).open();
-    } catch {
-      new Notice("Git Lens: failed to load commit diff");
-    }
+    const displayName = result.absFile.split("/").pop() ?? result.absFile;
+    await this.showHistory(result.absFile, false, displayName, blame.hash);
   }
 
   /** Open the commit-history viewer for a file or folder from the explorer. */
@@ -278,8 +275,9 @@ export default class GitLensPlugin extends Plugin {
     await this.showHistory(abs, isDir, displayName);
   }
 
-  /** Fetch the first page of history for a path and open the viewer, or warn. */
-  private async showHistory(abs: string, isDir: boolean, displayName: string): Promise<void> {
+  /** Fetch the first page of history for a path and open the viewer, or warn.
+   * `focusHash` selects/reveals a specific commit on open (e.g. from a blame click). */
+  private async showHistory(abs: string, isDir: boolean, displayName: string, focusHash?: string): Promise<void> {
     try {
       const commits = await this.git.log(abs, isDir);
       if (commits === null) {
@@ -290,7 +288,7 @@ export default class GitLensPlugin extends Plugin {
         new Notice(`Git Lens: no commit history for "${displayName}"`);
         return;
       }
-      new HistoryModal(this.app, this.git, abs, isDir, displayName, commits).open();
+      new HistoryModal(this.app, this.git, abs, isDir, displayName, commits, focusHash).open();
     } catch {
       new Notice("Git Lens: failed to load commit history");
     }

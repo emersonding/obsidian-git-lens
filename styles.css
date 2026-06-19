@@ -88,13 +88,7 @@
   margin-top: 10px;
 }
 
-/* ===== Diff view (shared by the line-click modal and the history viewer) ===== */
-/* The single-file diff modal scrolls its own content (both axes). */
-.git-lens-diff-modal .modal-content {
-  max-height: 70vh;
-  overflow: auto;
-}
-
+/* ===== Diff view (rendered inside the history viewer's detail pane) ===== */
 .git-lens-diff {
   margin: 0;
   font-family: var(--font-monospace);

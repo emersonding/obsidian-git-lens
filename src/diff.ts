@@ -1,6 +1,6 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import { GitBlameService } from "./git";
-import { BlameLine, ChangedFile, CommitInfo, HISTORY_PAGE_SIZE } from "./types";
+import { ChangedFile, CommitInfo, HISTORY_PAGE_SIZE } from "./types";
 import { formatAbsolute, formatAge, shortHash } from "./format";
 import { DiffFileKind, parseDiff } from "./diffParse";
 import { planDiffRows } from "./wordDiff";
@@ -99,30 +99,6 @@ export function renderDiffInto(el: HTMLElement, diff: string): Map<string, HTMLE
   return headers;
 }
 
-/**
- * Modal that renders `git show <hash> -- <file>` output (scoped to one file)
- * with basic +/- coloring.
- */
-export class DiffModal extends Modal {
-  constructor(
-    app: App,
-    private readonly blame: BlameLine,
-    private readonly diff: string,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    this.modalEl.addClass("git-lens-diff-modal");
-    this.titleEl.setText(`${shortHash(this.blame.hash)} — ${this.blame.summary}`);
-    renderDiffInto(this.contentEl, this.diff);
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-  }
-}
-
 /** Per-row controls so the expand/collapse-all button can drive every commit. */
 interface CommitRow {
   setExpanded(v: boolean): void;
@@ -158,6 +134,9 @@ export class HistoryModal extends Modal {
     private readonly displayName: string,
     /** First page of commits, already fetched. */
     initial: CommitInfo[],
+    /** Optional commit to select and reveal on open (e.g. from a blame click);
+     * history is paged back until it's found. */
+    private readonly focusHash?: string,
   ) {
     super(app);
     this.commits = [...initial];
@@ -189,8 +168,12 @@ export class HistoryModal extends Modal {
     this.renderMore();
     this.updateTitle();
 
-    if (this.commits.length) void this.select(this.commits[0].hash);
-    else this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "No commits." });
+    if (this.commits.length) {
+      if (this.focusHash) void this.focusCommit(this.focusHash);
+      else void this.select(this.commits[0].hash);
+    } else {
+      this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "No commits." });
+    }
   }
 
   private updateTitle(): void {
@@ -263,21 +246,27 @@ export class HistoryModal extends Modal {
     btn.addEventListener("click", () => void this.loadMore(btn));
   }
 
+  /** Fetch and render the next page of commits; sets `exhausted` at the end.
+   * Throws on failure so callers can decide how to surface it. */
+  private async fetchNextPage(): Promise<void> {
+    const next = await this.git.log(this.absPath, this.isDir, HISTORY_PAGE_SIZE, this.commits.length);
+    const page = next ?? [];
+    for (const commit of page) {
+      this.commits.push(commit);
+      this.renderCommit(commit);
+    }
+    // A short/empty page (or a failed fetch) means we've reached the end.
+    if (next === null || page.length < HISTORY_PAGE_SIZE) this.exhausted = true;
+    this.updateTitle();
+  }
+
   private async loadMore(btn: HTMLButtonElement): Promise<void> {
     if (this.loading) return;
     this.loading = true;
     btn.disabled = true;
     btn.setText("Loading…");
     try {
-      const next = await this.git.log(this.absPath, this.isDir, HISTORY_PAGE_SIZE, this.commits.length);
-      const page = next ?? [];
-      for (const commit of page) {
-        this.commits.push(commit);
-        this.renderCommit(commit);
-      }
-      // A short/empty page (or a failed fetch) means we've reached the end.
-      if (next === null || page.length < HISTORY_PAGE_SIZE) this.exhausted = true;
-      this.updateTitle();
+      await this.fetchNextPage();
       this.renderMore(); // re-evaluates whether another page is likely
     } catch {
       btn.disabled = false;
@@ -285,6 +274,33 @@ export class HistoryModal extends Modal {
       new Notice("Git Lens: failed to load more commits");
     } finally {
       this.loading = false;
+    }
+  }
+
+  /**
+   * Select and reveal a specific commit, paging back through history as needed
+   * to find it — the blamed commit is often older than the first page. Falls
+   * back to the newest commit if the hash never turns up.
+   */
+  private async focusCommit(hash: string): Promise<void> {
+    this.loading = true;
+    try {
+      while (!this.rowByHash.has(hash) && !this.exhausted) {
+        await this.fetchNextPage();
+      }
+    } catch {
+      new Notice("Git Lens: failed to load commit history");
+    } finally {
+      this.loading = false;
+    }
+    this.renderMore();
+
+    const row = this.rowByHash.get(hash);
+    if (row) {
+      await this.select(hash);
+      row.scrollIntoView({ block: "center" });
+    } else {
+      void this.select(this.commits[0].hash);
     }
   }
 
