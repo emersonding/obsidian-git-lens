@@ -1,6 +1,6 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import { GitBlameService } from "./git";
-import { ChangedFile, CommitInfo, HISTORY_PAGE_SIZE } from "./types";
+import { ChangedFile, CommitInfo, GitLensSettings, HISTORY_PAGE_SIZE } from "./types";
 import { formatAbsolute, formatAge, shortHash } from "./format";
 import { DiffFileKind, parseDiff } from "./diffParse";
 import { planDiffRows } from "./wordDiff";
@@ -30,6 +30,13 @@ const ROW_CLASS = {
   meta: "git-lens-meta",
   context: "",
 } as const;
+
+/** Pixels to scroll the diff per j/k press. */
+const VERTICAL_STEP = 60;
+/** Pixels to scroll the diff per h/l press. */
+const HORIZONTAL_STEP = 80;
+/** Fraction of the diff pane height to scroll per d/b page press. */
+const PAGE_FRACTION = 0.9;
 
 /**
  * Color +/- content rows; size each to its content so the tint spans full
@@ -134,6 +141,10 @@ export class HistoryModal extends Modal {
     private readonly displayName: string,
     /** First page of commits, already fetched. */
     initial: CommitInfo[],
+    /** Plugin settings; read for `wrapDiff` and updated when toggled. */
+    private readonly settings: GitLensSettings,
+    /** Persist `settings` after the wrap toggle changes it. */
+    private readonly saveSettings: () => void | Promise<void>,
     /** Optional commit to select and reveal on open (e.g. from a blame click);
      * history is paged back until it's found. */
     private readonly focusHash?: string,
@@ -145,9 +156,24 @@ export class HistoryModal extends Modal {
   onOpen(): void {
     this.modalEl.addClass("git-lens-history-modal");
 
-    // Title bar: a text label plus an expand/collapse-all icon on the right.
+    // Title bar: a text label, then a soft-wrap toggle and an expand/collapse-all
+    // icon pushed to the right.
     this.titleEl.empty();
     this.titleTextEl = this.titleEl.createSpan({ cls: "git-lens-history-title" });
+
+    const wrap = this.titleEl.createSpan({ cls: "git-lens-history-wrap clickable-icon" });
+    setIcon(wrap, "wrap-text");
+    const syncWrap = (): void => {
+      this.detailEl.toggleClass("is-wrapped", this.settings.wrapDiff);
+      wrap.toggleClass("is-active", this.settings.wrapDiff);
+      wrap.setAttr("aria-label", this.settings.wrapDiff ? "Disable soft wrap" : "Soft wrap long lines");
+    };
+    wrap.addEventListener("click", () => {
+      this.settings.wrapDiff = !this.settings.wrapDiff;
+      syncWrap();
+      void this.saveSettings();
+    });
+
     const toggle = this.titleEl.createSpan({ cls: "git-lens-history-expand clickable-icon" });
     setIcon(toggle, "chevrons-up-down");
     toggle.setAttr("aria-label", "Expand all");
@@ -163,6 +189,54 @@ export class HistoryModal extends Modal {
     this.rowsEl = list.createDiv({ cls: "git-lens-history-rows" });
     this.moreEl = list.createDiv({ cls: "git-lens-history-more" });
     this.detailEl = split.createDiv({ cls: "git-lens-history-detail" });
+    syncWrap();
+
+    // Up/Down switch the selected commit (instead of scrolling the page).
+    // Returning false tells Obsidian to preventDefault, suppressing the scroll.
+    this.scope.register([], "ArrowUp", () => {
+      void this.selectRelative(-1);
+      return false;
+    });
+    this.scope.register([], "ArrowDown", () => {
+      void this.selectRelative(1);
+      return false;
+    });
+    // Left/Right scroll the diff horizontally (like h/l).
+    this.scope.register([], "ArrowLeft", () => {
+      this.scrollDetail(0, -HORIZONTAL_STEP);
+      return false;
+    });
+    this.scope.register([], "ArrowRight", () => {
+      this.scrollDetail(0, HORIZONTAL_STEP);
+      return false;
+    });
+
+    // Vim-style navigation of the diff pane. j/k scroll down/up; h/l scroll
+    // horizontally; d/b page down/up. (Commit switching stays on Up/Down.)
+    this.scope.register([], "j", () => {
+      this.scrollDetail(VERTICAL_STEP, 0);
+      return false;
+    });
+    this.scope.register([], "k", () => {
+      this.scrollDetail(-VERTICAL_STEP, 0);
+      return false;
+    });
+    this.scope.register([], "h", () => {
+      this.scrollDetail(0, -HORIZONTAL_STEP);
+      return false;
+    });
+    this.scope.register([], "l", () => {
+      this.scrollDetail(0, HORIZONTAL_STEP);
+      return false;
+    });
+    this.scope.register([], "d", () => {
+      this.scrollDetail(this.detailEl.clientHeight * PAGE_FRACTION, 0);
+      return false;
+    });
+    this.scope.register([], "b", () => {
+      this.scrollDetail(-this.detailEl.clientHeight * PAGE_FRACTION, 0);
+      return false;
+    });
 
     for (const commit of this.commits) this.renderCommit(commit);
     this.renderMore();
@@ -302,6 +376,46 @@ export class HistoryModal extends Modal {
     } else {
       void this.select(this.commits[0].hash);
     }
+  }
+
+  /**
+   * Move the selection by `delta` commits (newest-first order, so +1 is older,
+   * -1 is newer) and reveal the new row. Pages in more history if stepping past
+   * the last loaded commit.
+   */
+  private async selectRelative(delta: number): Promise<void> {
+    if (this.loading || this.commits.length === 0) return;
+
+    const current = this.selectedHash
+      ? this.commits.findIndex((c) => c.hash === this.selectedHash)
+      : -1;
+    let next = current + delta;
+    if (next < 0) return;
+
+    if (next >= this.commits.length) {
+      if (this.exhausted) return;
+      this.loading = true;
+      try {
+        await this.fetchNextPage();
+      } catch {
+        new Notice("Git Lens: failed to load more commits");
+        return;
+      } finally {
+        this.loading = false;
+      }
+      this.renderMore();
+      if (next >= this.commits.length) return;
+    }
+
+    const commit = this.commits[next];
+    await this.select(commit.hash);
+    this.rowByHash.get(commit.hash)?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** Scroll the diff detail pane by the given pixel deltas. */
+  private scrollDetail(top: number, left: number): void {
+    if (top) this.detailEl.scrollTop += top;
+    if (left) this.detailEl.scrollLeft += left;
   }
 
   private async select(hash: string, scrollToPath?: string): Promise<void> {

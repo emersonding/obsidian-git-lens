@@ -91,6 +91,8 @@ export interface GitLensSettings {
   colorMode: ColorMode;
   /** git binary to use; absolute path if "git" isn't on Obsidian's PATH. */
   gitPath: string;
+  /** Soft-wrap long diff lines in the history view instead of scrolling. */
+  wrapDiff: boolean;
 }
 
 export const DEFAULT_SETTINGS: GitLensSettings = {
@@ -99,6 +101,7 @@ export const DEFAULT_SETTINGS: GitLensSettings = {
   showHash: false,
   colorMode: "commit",
   gitPath: "git",
+  wrapDiff: false,
 };
 
 /** Hash git uses for the synthetic "Not Committed Yet" commit. */

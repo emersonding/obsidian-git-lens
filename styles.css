@@ -259,9 +259,15 @@
   white-space: nowrap;
 }
 
+/* The title text flex-grows, pushing both icons to the right; they sit together
+   (gap from .modal-title) with the expand icon clear of the close button. */
+.git-lens-history-wrap {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
 .git-lens-history-expand {
   flex: 0 0 auto;
-  margin-left: auto;
   /* Keep clear of the modal's close button at the top-right corner. */
   margin-right: 32px;
   cursor: pointer;
@@ -290,6 +296,22 @@
 /* The detail pane owns scrolling; let the diff fill it. */
 .git-lens-history-detail .git-lens-diff {
   max-height: none;
+}
+
+/* Soft-wrap mode: wrap long lines to the pane width instead of scrolling. The
+   per-row `width: max-content` is dropped so rows wrap and still fill the width. */
+.git-lens-history-detail.is-wrapped .git-lens-diff {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.git-lens-history-detail.is-wrapped .git-lens-diff > div {
+  width: auto;
+}
+
+/* Active state for the soft-wrap toggle. */
+.git-lens-history-wrap.is-active {
+  color: var(--text-accent);
 }
 
 .git-lens-commit {

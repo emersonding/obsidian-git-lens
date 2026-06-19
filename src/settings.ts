@@ -68,6 +68,16 @@ export class GitLensSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Soft wrap diffs")
+      .setDesc("Wrap long lines in the history view instead of scrolling horizontally.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.wrapDiff).onChange(async (v) => {
+          this.plugin.settings.wrapDiff = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Git executable")
       .setDesc(
         "Path to the git binary. Set an absolute path (e.g. /usr/bin/git or " +

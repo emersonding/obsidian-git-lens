@@ -288,7 +288,17 @@ export default class GitLensPlugin extends Plugin {
         new Notice(`Git Lens: no commit history for "${displayName}"`);
         return;
       }
-      new HistoryModal(this.app, this.git, abs, isDir, displayName, commits, focusHash).open();
+      new HistoryModal(
+        this.app,
+        this.git,
+        abs,
+        isDir,
+        displayName,
+        commits,
+        this.settings,
+        () => this.saveSettings(),
+        focusHash,
+      ).open();
     } catch {
       new Notice("Git Lens: failed to load commit history");
     }
