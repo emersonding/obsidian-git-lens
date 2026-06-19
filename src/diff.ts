@@ -113,6 +113,7 @@ interface CommitRow {
  */
 export class HistoryModal extends Modal {
   private detailEl!: HTMLElement;
+  private titleTextEl!: HTMLElement;
   private rowsEl!: HTMLElement;
   private moreEl!: HTMLElement;
   private selectedHash: string | null = null;
@@ -141,12 +142,17 @@ export class HistoryModal extends Modal {
   onOpen(): void {
     this.modalEl.addClass("git-lens-history-modal");
 
-    const toolbar = this.contentEl.createDiv({ cls: "git-lens-history-toolbar" });
-    const expandBtn = toolbar.createEl("button", { text: "Expand all" });
-    expandBtn.addEventListener("click", () => {
+    // Title bar: a text label plus an expand/collapse-all icon on the right.
+    this.titleEl.empty();
+    this.titleTextEl = this.titleEl.createSpan({ cls: "git-lens-history-title" });
+    const toggle = this.titleEl.createSpan({ cls: "git-lens-history-expand clickable-icon" });
+    setIcon(toggle, "chevrons-up-down");
+    toggle.setAttr("aria-label", "Expand all");
+    toggle.addEventListener("click", () => {
       this.allExpanded = !this.allExpanded;
       for (const r of this.rows) r.setExpanded(this.allExpanded);
-      expandBtn.setText(this.allExpanded ? "Collapse all" : "Expand all");
+      setIcon(toggle, this.allExpanded ? "chevrons-down-up" : "chevrons-up-down");
+      toggle.setAttr("aria-label", this.allExpanded ? "Collapse all" : "Expand all");
     });
 
     const split = this.contentEl.createDiv({ cls: "git-lens-history" });
@@ -164,7 +170,7 @@ export class HistoryModal extends Modal {
   }
 
   private updateTitle(): void {
-    this.titleEl.setText(`History — ${this.displayName} (${this.commits.length})`);
+    this.titleTextEl.setText(`History — ${this.displayName} (${this.commits.length})`);
   }
 
   private renderCommit(commit: CommitInfo): void {
