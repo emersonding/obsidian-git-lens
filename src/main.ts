@@ -111,6 +111,12 @@ export default class GitLensPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "show-history-all",
+      name: "Show history for all files",
+      callback: () => void this.showHistory(this.vaultBase(), true, "All files"),
+    });
+
+    this.addCommand({
       id: "toggle-blame-note",
       name: "Toggle blame for this note",
       callback: () => this.toggleNoteBlame(),
@@ -268,7 +274,12 @@ export default class GitLensPlugin extends Plugin {
     const isDir = file instanceof TFolder;
     if (!isDir && !(file instanceof TFile)) return;
     const abs = `${this.vaultBase()}/${file.path}`;
-    const displayName = isDir ? file.path || "/" : (file as TFile).name;
+    const displayName = isDir ? file.path || "All files" : (file as TFile).name;
+    await this.showHistory(abs, isDir, displayName);
+  }
+
+  /** Fetch the first page of history for a path and open the viewer, or warn. */
+  private async showHistory(abs: string, isDir: boolean, displayName: string): Promise<void> {
     try {
       const commits = await this.git.log(abs, isDir);
       if (commits === null) {

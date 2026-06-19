@@ -21,7 +21,8 @@ globally in settings.
   right-click) — independent of the global on/off setting, which is **off by default**.
 - Click a line → the **commit diff** (`git show <hash> -- <file>`) in a modal, +/- colored.
 - **Commit history viewer**: right-click any file or folder in the explorer (or run the
-  "Show history for current file" command) to open a master-detail window — commits on the
+  "Show history for current file" / "Show history for all files" commands) to open a
+  master-detail window — commits on the
   left (subject, hash, author, date), the selected commit's diff on the right. Each commit
   row **expands** to list the files it changed (click a file to jump to it in the diff), with
   an **Expand/Collapse all** button, and a **Load more** button to page back through history
