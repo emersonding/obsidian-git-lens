@@ -5,13 +5,15 @@ import {
   Notice,
   Platform,
   Plugin,
+  TAbstractFile,
   TFile,
+  TFolder,
   debounce,
 } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { GitBlameService } from "./git";
 import { blameExtension, blameMarkerCount, readBlameContext, setBlame } from "./blameExtension";
-import { DiffModal } from "./diff";
+import { DiffModal, HistoryModal } from "./diff";
 import { GitLensSettingTab } from "./settings";
 import { BlameLine, BlameResult, BlameStats, DEFAULT_SETTINGS, GitLensSettings } from "./types";
 
@@ -84,6 +86,29 @@ export default class GitLensPlugin extends Plugin {
         );
       }),
     );
+
+    // Right-click a file or folder in the explorer → show its commit history.
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        menu.addItem((item) =>
+          item
+            .setTitle("Git Lens: show history")
+            .setIcon("history")
+            .onClick(() => void this.openHistory(file)),
+        );
+      }),
+    );
+
+    this.addCommand({
+      id: "show-history-file",
+      name: "Show history for current file",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (checking) return !!file;
+        if (file) void this.openHistory(file);
+        return true;
+      },
+    });
 
     this.addCommand({
       id: "toggle-blame-note",
@@ -235,6 +260,28 @@ export default class GitLensPlugin extends Plugin {
       new DiffModal(this.app, blame, diff).open();
     } catch {
       new Notice("Git Lens: failed to load commit diff");
+    }
+  }
+
+  /** Open the commit-history viewer for a file or folder from the explorer. */
+  private async openHistory(file: TAbstractFile): Promise<void> {
+    const isDir = file instanceof TFolder;
+    if (!isDir && !(file instanceof TFile)) return;
+    const abs = `${this.vaultBase()}/${file.path}`;
+    const displayName = isDir ? file.path || "/" : (file as TFile).name;
+    try {
+      const commits = await this.git.log(abs, isDir);
+      if (commits === null) {
+        new Notice("Git Lens: not a git repo (or git unavailable)");
+        return;
+      }
+      if (commits.length === 0) {
+        new Notice(`Git Lens: no commit history for "${displayName}"`);
+        return;
+      }
+      new HistoryModal(this.app, this.git, abs, isDir, displayName, commits).open();
+    } catch {
+      new Notice("Git Lens: failed to load commit history");
     }
   }
 

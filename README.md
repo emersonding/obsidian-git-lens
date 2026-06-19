@@ -20,6 +20,9 @@ globally in settings.
 - **Per-note toggle**: show blame for just the current note (ribbon icon, command, or
   right-click) — independent of the global on/off setting, which is **off by default**.
 - Click a line → the **commit diff** (`git show <hash> -- <file>`) in a modal, +/- colored.
+- **Commit history viewer**: right-click any file or folder in the explorer (or run the
+  "Show history for current file" command) to open a master-detail window — commits on the
+  left (subject, hash, author, date), the selected commit's diff on the right.
 - Works on **git-crypt-encrypted notes** (decrypts history via the repo's textconv driver).
 - Locally-modified lines are marked as *uncommitted*.
 - Settings: global on/off, date style, show hash, bar color, git executable path.
@@ -58,9 +61,9 @@ See `src/`:
 
 | File | Responsibility |
 | --- | --- |
-| `git.ts` | Run & parse `git blame` / `git show`; cache by path+mtime |
+| `git.ts` | Run & parse `git blame` / `git show` / `git log`; cache by path+mtime |
 | `blameExtension.ts` | CM6 state fields, gutter, markers, event handling |
-| `popup.ts` | Commit popover + diff modal |
+| `diff.ts` | Single-commit diff modal + file/folder commit-history viewer |
 | `settings.ts` | Settings tab |
 | `main.ts` | Plugin lifecycle, events, commands |
 

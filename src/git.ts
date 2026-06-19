@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { readFile } from "fs/promises";
 import * as path from "path";
-import { BlameLine, BlameResult, ZERO_HASH } from "./types";
+import { BlameLine, BlameResult, CommitInfo, ZERO_HASH } from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -149,6 +149,36 @@ export class GitBlameService {
   }
 
   /**
+   * Commit history for a file or directory, newest first (capped at `limit`).
+   * Returns `null` when the path is outside any git repo or git is unavailable.
+   */
+  async log(absPath: string, isDir: boolean, limit = 200): Promise<CommitInfo[] | null> {
+    const { cwd, pathspec } = historyTarget(absPath, isDir);
+    try {
+      const out = await this.run(cwd, [
+        "log",
+        `--max-count=${limit}`,
+        "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s",
+        "--",
+        pathspec,
+      ]);
+      return parseLog(out);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * `git show <hash>` scoped to a file or directory, for the history viewer.
+   * `--textconv` decrypts git-crypt blobs (a no-op for ordinary files), so the
+   * diff is meaningful even under an encrypting clean/smudge filter.
+   */
+  async showPath(absPath: string, isDir: boolean, hash: string): Promise<string> {
+    const { cwd, pathspec } = historyTarget(absPath, isDir);
+    return this.run(cwd, ["show", "--no-color", "--textconv", hash, "--", pathspec]);
+  }
+
+  /**
    * Per-line blame for an encrypted file (git-crypt etc.): decrypt every
    * historical version through the repo's textconv driver and attribute lines
    * incrementally. Returns null when decryption isn't available or the file has
@@ -267,6 +297,40 @@ interface CommitMeta {
   authorMail: string;
   authorTime: number;
   summary: string;
+}
+
+/**
+ * Resolve where to run git and what pathspec to use for a history query. Files
+ * run from their own directory with their basename; directories run from inside
+ * themselves with ".". This mirrors the symlink-safe approach used by blame,
+ * avoiding path.relative() (which breaks under symlinked prefixes like macOS's
+ * /var -> /private/var).
+ */
+function historyTarget(absPath: string, isDir: boolean): { cwd: string; pathspec: string } {
+  return isDir
+    ? { cwd: absPath, pathspec: "." }
+    : { cwd: path.dirname(absPath), pathspec: path.basename(absPath) };
+}
+
+/**
+ * Parse `git log --format=%H%x1f%an%x1f%ae%x1f%at%x1f%s` output (one commit per
+ * line, fields separated by US/0x1f) into commit records. Exported for tests.
+ */
+export function parseLog(out: string): CommitInfo[] {
+  const commits: CommitInfo[] = [];
+  for (const line of out.split("\n")) {
+    if (!line) continue;
+    const [hash, author, mail, at, ...rest] = line.split("\x1f");
+    if (!hash) continue;
+    commits.push({
+      hash,
+      author: author ?? "",
+      authorMail: mail ? `<${mail}>` : "",
+      authorTime: parseInt(at ?? "", 10) || 0,
+      summary: rest.join("\x1f"),
+    });
+  }
+  return commits;
 }
 
 /**

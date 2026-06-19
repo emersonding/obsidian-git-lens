@@ -123,3 +123,84 @@
 .git-lens-meta {
   color: var(--text-muted);
 }
+
+/* ===== History viewer (master-detail) ===== */
+.git-lens-history-modal {
+  width: min(1100px, 90vw);
+}
+
+.git-lens-history {
+  display: flex;
+  gap: 12px;
+  height: 70vh;
+}
+
+.git-lens-history-list {
+  flex: 0 0 300px;
+  overflow-y: auto;
+  border-right: 1px solid var(--background-modifier-border);
+  padding-right: 8px;
+}
+
+.git-lens-history-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* The detail pane owns scrolling; let the diff fill it. */
+.git-lens-history-detail .git-lens-diff {
+  max-height: none;
+}
+
+.git-lens-commit {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.git-lens-commit:hover {
+  background: var(--background-modifier-hover);
+}
+
+.git-lens-commit.is-active {
+  background: var(--background-modifier-active-hover, var(--background-secondary-alt));
+  border-left-color: var(--text-accent);
+}
+
+.git-lens-commit-summary {
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-lens-commit-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.git-lens-commit-hash {
+  font-family: var(--font-monospace);
+}
+
+.git-lens-commit-author {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-lens-commit-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.git-lens-history-empty {
+  padding: 16px;
+  color: var(--text-muted);
+}

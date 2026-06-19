@@ -13,6 +13,19 @@ export interface BlameLine {
   isUncommitted: boolean;
 }
 
+/** One commit in a file's or directory's history, for the history viewer. */
+export interface CommitInfo {
+  /** 40-char commit hash. */
+  hash: string;
+  author: string;
+  /** Raw `author-mail`, including the angle brackets, e.g. "<a@b.com>". */
+  authorMail: string;
+  /** Author time in seconds since the Unix epoch. */
+  authorTime: number;
+  /** First line of the commit message. */
+  summary: string;
+}
+
 /** Result of blaming a file: its repo root plus 1-based per-line attribution. */
 export interface BlameResult {
   repoRoot: string;
