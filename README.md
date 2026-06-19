@@ -22,7 +22,10 @@ globally in settings.
 - Click a line → the **commit diff** (`git show <hash> -- <file>`) in a modal, +/- colored.
 - **Commit history viewer**: right-click any file or folder in the explorer (or run the
   "Show history for current file" command) to open a master-detail window — commits on the
-  left (subject, hash, author, date), the selected commit's diff on the right.
+  left (subject, hash, author, date), the selected commit's diff on the right. Each commit
+  row **expands** to list the files it changed (click a file to jump to it in the diff), with
+  an **Expand/Collapse all** button, and a **Load more** button to page back through history
+  beyond the first 200 commits.
 - Works on **git-crypt-encrypted notes** (decrypts history via the repo's textconv driver).
 - Locally-modified lines are marked as *uncommitted*.
 - Settings: global on/off, date style, show hash, bar color, git executable path.

@@ -211,6 +211,18 @@
   width: min(1100px, 90vw);
 }
 
+.git-lens-history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.git-lens-history-toolbar button {
+  font-size: var(--font-ui-smaller);
+  padding: 3px 10px;
+}
+
 .git-lens-history {
   display: flex;
   gap: 12px;
@@ -218,7 +230,7 @@
 }
 
 .git-lens-history-list {
-  flex: 0 0 300px;
+  flex: 0 0 320px;
   overflow-y: auto;
   border-right: 1px solid var(--background-modifier-border);
   padding-right: 8px;
@@ -236,19 +248,53 @@
 }
 
 .git-lens-commit {
-  padding: 6px 8px;
   border-radius: 6px;
-  cursor: pointer;
   border-left: 3px solid transparent;
 }
 
-.git-lens-commit:hover {
+.git-lens-commit-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 8px 6px 4px;
+  cursor: pointer;
+}
+
+.git-lens-commit-head:hover {
   background: var(--background-modifier-hover);
+  border-radius: 6px;
 }
 
 .git-lens-commit.is-active {
   background: var(--background-modifier-active-hover, var(--background-secondary-alt));
   border-left-color: var(--text-accent);
+}
+
+/* Disclosure chevron; rotates down when the commit's file list is expanded. */
+.git-lens-commit-chevron {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.1s ease;
+}
+
+.git-lens-commit-chevron .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.git-lens-commit-chevron:hover {
+  color: var(--text-normal);
+}
+
+.git-lens-commit.is-expanded .git-lens-commit-chevron {
+  transform: rotate(90deg);
+}
+
+.git-lens-commit-main {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .git-lens-commit-summary {
@@ -280,6 +326,79 @@
 .git-lens-commit-date {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Per-commit changed-file list, revealed when the row is expanded. */
+.git-lens-commit-files {
+  display: none;
+  margin: 2px 0 6px 24px;
+  padding-left: 8px;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.git-lens-commit.is-expanded .git-lens-commit-files {
+  display: block;
+}
+
+.git-lens-commit-file {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+}
+
+.git-lens-commit-file:hover {
+  background: var(--background-modifier-hover);
+}
+
+.git-lens-commit-file.is-empty {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.git-lens-commit-file.is-empty:hover {
+  background: none;
+}
+
+.git-lens-file-status {
+  flex: 0 0 auto;
+  width: 1.2em;
+  text-align: center;
+  font-family: var(--font-monospace);
+  font-weight: 600;
+}
+
+.git-lens-file-status.is-added {
+  color: rgb(63, 185, 80);
+}
+
+.git-lens-file-status.is-deleted {
+  color: rgb(248, 81, 73);
+}
+
+.git-lens-file-status.is-renamed {
+  color: var(--text-accent);
+}
+
+.git-lens-file-status.is-modified {
+  color: var(--text-muted);
+}
+
+.git-lens-file-path {
+  word-break: break-all;
+  color: var(--text-normal);
+}
+
+.git-lens-history-more {
+  padding: 8px 4px;
+}
+
+.git-lens-history-more button {
+  width: 100%;
+  font-size: var(--font-ui-smaller);
 }
 
 .git-lens-history-empty {

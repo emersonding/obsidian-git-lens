@@ -13,6 +13,16 @@ export interface BlameLine {
   isUncommitted: boolean;
 }
 
+/** A single file changed by a commit (from `git log --name-status`). */
+export interface ChangedFile {
+  /** Single-letter status: A added, M modified, D deleted, R renamed, C copied, T type. */
+  status: string;
+  /** Path of the file (new path for renames/copies), relative to the repo root. */
+  path: string;
+  /** Previous path, set only for renames/copies. */
+  oldPath?: string;
+}
+
 /** One commit in a file's or directory's history, for the history viewer. */
 export interface CommitInfo {
   /** 40-char commit hash. */
@@ -24,7 +34,12 @@ export interface CommitInfo {
   authorTime: number;
   /** First line of the commit message. */
   summary: string;
+  /** Files this commit changed (within the queried path). */
+  files: ChangedFile[];
 }
+
+/** How many commits the history viewer loads per page. */
+export const HISTORY_PAGE_SIZE = 200;
 
 /** Result of blaming a file: its repo root plus 1-based per-line attribution. */
 export interface BlameResult {

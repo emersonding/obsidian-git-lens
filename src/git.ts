@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { readFile } from "fs/promises";
 import * as path from "path";
-import { BlameLine, BlameResult, CommitInfo, ZERO_HASH } from "./types";
+import { BlameLine, BlameResult, ChangedFile, CommitInfo, HISTORY_PAGE_SIZE, ZERO_HASH } from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -149,16 +149,28 @@ export class GitBlameService {
   }
 
   /**
-   * Commit history for a file or directory, newest first (capped at `limit`).
-   * Returns `null` when the path is outside any git repo or git is unavailable.
+   * One page of commit history for a file or directory, newest first. Each
+   * commit carries the list of files it changed (within the queried path) so the
+   * viewer can expand a commit without another git call. `skip` pages backwards
+   * through older commits. Returns `null` when the path is outside any git repo
+   * or git is unavailable.
    */
-  async log(absPath: string, isDir: boolean, limit = 200): Promise<CommitInfo[] | null> {
+  async log(
+    absPath: string,
+    isDir: boolean,
+    limit = HISTORY_PAGE_SIZE,
+    skip = 0,
+  ): Promise<CommitInfo[] | null> {
     const { cwd, pathspec } = historyTarget(absPath, isDir);
     try {
+      // Record separator (0x1e) before each commit; unit separator (0x1f) between
+      // fields. `--name-status` appends "A\tpath" / "R100\told\tnew" lines per commit.
       const out = await this.run(cwd, [
         "log",
         `--max-count=${limit}`,
-        "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s",
+        `--skip=${skip}`,
+        "--name-status",
+        "--format=%x1e%H%x1f%an%x1f%ae%x1f%at%x1f%s",
         "--",
         pathspec,
       ]);
@@ -313,24 +325,50 @@ function historyTarget(absPath: string, isDir: boolean): { cwd: string; pathspec
 }
 
 /**
- * Parse `git log --format=%H%x1f%an%x1f%ae%x1f%at%x1f%s` output (one commit per
- * line, fields separated by US/0x1f) into commit records. Exported for tests.
+ * Parse `git log --name-status --format=%x1e%H%x1f%an%x1f%ae%x1f%at%x1f%s`
+ * output. Each commit is a record introduced by RS (0x1e): a metadata line
+ * (fields split by US/0x1f) followed by TAB-separated `--name-status` lines.
+ * Exported for tests.
  */
 export function parseLog(out: string): CommitInfo[] {
   const commits: CommitInfo[] = [];
-  for (const line of out.split("\n")) {
-    if (!line) continue;
-    const [hash, author, mail, at, ...rest] = line.split("\x1f");
+  for (const record of out.split("\x1e")) {
+    if (!record.trim()) continue;
+    const lines = record.split("\n");
+    const [hash, author, mail, at, ...rest] = lines[0].split("\x1f");
     if (!hash) continue;
+
+    const files: ChangedFile[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const file = parseNameStatus(lines[i]);
+      if (file) files.push(file);
+    }
+
     commits.push({
       hash,
       author: author ?? "",
       authorMail: mail ? `<${mail}>` : "",
       authorTime: parseInt(at ?? "", 10) || 0,
       summary: rest.join("\x1f"),
+      files,
     });
   }
   return commits;
+}
+
+/**
+ * Parse one `git --name-status` line: "M\tpath", "A\tpath", or for renames/
+ * copies "R100\told\tnew". Returns null for blank/unrecognized lines.
+ */
+function parseNameStatus(line: string): ChangedFile | null {
+  if (!line || !line.includes("\t")) return null;
+  const parts = line.split("\t");
+  const code = parts[0]?.[0];
+  if (!code) return null;
+  if ((code === "R" || code === "C") && parts.length >= 3) {
+    return { status: code, oldPath: parts[1], path: parts[2] };
+  }
+  return { status: code, path: parts[1] };
 }
 
 /**
