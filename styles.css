@@ -248,6 +248,8 @@
 .git-lens-history-expand {
   flex: 0 0 auto;
   margin-left: auto;
+  /* Keep clear of the modal's close button at the top-right corner. */
+  margin-right: 32px;
   cursor: pointer;
 }
 
