@@ -372,6 +372,24 @@
   border-left-color: var(--text-accent);
 }
 
+/* Synthetic "Uncommitted changes" entry: a warm accent so it reads as local,
+   in-progress work distinct from real history. */
+.git-lens-commit.is-working {
+  border-left-color: var(--color-orange, var(--text-warning, var(--text-accent)));
+}
+
+.git-lens-commit.is-working .git-lens-commit-summary {
+  font-style: italic;
+}
+
+.git-lens-commit-hash.is-working {
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-ui-smaller);
+  color: var(--color-orange, var(--text-warning, var(--text-muted)));
+}
+
 /* Disclosure chevron; rotates down when the commit's file list is expanded. */
 .git-lens-commit-chevron {
   flex: 0 0 auto;

@@ -1,6 +1,6 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import { GitBlameService } from "./git";
-import { ChangedFile, CommitInfo, GitLensSettings, HISTORY_PAGE_SIZE } from "./types";
+import { ChangedFile, CommitInfo, GitLensSettings, HISTORY_PAGE_SIZE, ZERO_HASH } from "./types";
 import { formatAbsolute, formatAge, shortHash } from "./format";
 import { DiffFileKind, parseDiff } from "./diffParse";
 import { planDiffRows } from "./wordDiff";
@@ -131,6 +131,9 @@ export class HistoryModal extends Modal {
   private allExpanded = false;
   private loading = false;
   private exhausted = false;
+  /** Synthetic working-tree commits prepended to the list (0 or 1). They sit
+   *  outside real history, so paging math must subtract them. */
+  private workingEntries = 0;
   private readonly commits: CommitInfo[];
   private readonly rowByHash = new Map<string, HTMLElement>();
   private readonly rows: CommitRow[] = [];
@@ -264,6 +267,41 @@ export class HistoryModal extends Modal {
     } else {
       this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "No commits." });
     }
+
+    // Surface any uncommitted changes as a synthetic entry at the top of the
+    // list. Loaded after the initial render so it never blocks opening.
+    void this.addWorkingTreeEntry();
+  }
+
+  /**
+   * Prepend a synthetic "Uncommitted changes" commit when the working tree has
+   * changes within scope. It carries the all-zero hash so `select()` routes it
+   * to the working-tree diff instead of `git show`.
+   */
+  private async addWorkingTreeEntry(): Promise<void> {
+    let files: ChangedFile[] | null;
+    try {
+      files = await this.git.statusFiles(this.absPath, this.isDir);
+    } catch {
+      return;
+    }
+    if (!files || files.length === 0 || this.rowByHash.has(ZERO_HASH)) return;
+
+    const commit: CommitInfo = {
+      hash: ZERO_HASH,
+      author: "",
+      authorMail: "",
+      authorTime: Math.floor(Date.now() / 1000),
+      summary: "Uncommitted changes",
+      files,
+    };
+    this.commits.unshift(commit);
+    this.workingEntries++;
+    this.renderCommit(commit);
+    // renderCommit appends; move the working row to the top of the list.
+    const row = this.rowByHash.get(ZERO_HASH);
+    if (row) this.rowsEl.prepend(row);
+    this.updateTitle();
   }
 
   private updateTitle(): void {
@@ -271,7 +309,9 @@ export class HistoryModal extends Modal {
   }
 
   private renderCommit(commit: CommitInfo): void {
+    const isWorking = commit.hash === ZERO_HASH;
     const row = this.rowsEl.createDiv({ cls: "git-lens-commit" });
+    if (isWorking) row.addClass("is-working");
     this.rowByHash.set(commit.hash, row);
 
     const head = row.createDiv({ cls: "git-lens-commit-head" });
@@ -280,12 +320,17 @@ export class HistoryModal extends Modal {
     const main = head.createDiv({ cls: "git-lens-commit-main" });
     main.createDiv({ cls: "git-lens-commit-summary", text: commit.summary || "(no message)" });
     const meta = main.createDiv({ cls: "git-lens-commit-meta" });
-    meta.createSpan({ cls: "git-lens-commit-hash", text: shortHash(commit.hash) });
-    meta.createSpan({ cls: "git-lens-commit-author", text: commit.author });
-    meta.createSpan({
-      cls: "git-lens-commit-date",
-      text: commit.authorTime ? `${formatAbsolute(commit.authorTime)} · ${formatAge(commit.authorTime)}` : "",
-    });
+    if (isWorking) {
+      // No real hash/author/date for the working tree; flag it as local instead.
+      meta.createSpan({ cls: "git-lens-commit-hash is-working", text: "uncommitted" });
+    } else {
+      meta.createSpan({ cls: "git-lens-commit-hash", text: shortHash(commit.hash) });
+      meta.createSpan({ cls: "git-lens-commit-author", text: commit.author });
+      meta.createSpan({
+        cls: "git-lens-commit-date",
+        text: commit.authorTime ? `${formatAbsolute(commit.authorTime)} · ${formatAge(commit.authorTime)}` : "",
+      });
+    }
 
     const fileList = row.createDiv({ cls: "git-lens-commit-files" });
     if (commit.files.length) {
@@ -333,7 +378,8 @@ export class HistoryModal extends Modal {
     this.moreEl.empty();
     // A full first page implies there may be more; once a fetch comes back short
     // (or empty) `exhausted` is set and the button stays hidden.
-    if (this.exhausted || this.commits.length === 0 || this.commits.length % HISTORY_PAGE_SIZE !== 0) {
+    const real = this.commits.length - this.workingEntries;
+    if (this.exhausted || real === 0 || real % HISTORY_PAGE_SIZE !== 0) {
       return;
     }
     const btn = this.moreEl.createEl("button", { text: "Load more" });
@@ -343,7 +389,9 @@ export class HistoryModal extends Modal {
   /** Fetch and render the next page of commits; sets `exhausted` at the end.
    * Throws on failure so callers can decide how to surface it. */
   private async fetchNextPage(): Promise<void> {
-    const next = await this.git.log(this.absPath, this.isDir, HISTORY_PAGE_SIZE, this.commits.length);
+    // Skip past real commits only; the synthetic working entry isn't in history.
+    const skip = this.commits.length - this.workingEntries;
+    const next = await this.git.log(this.absPath, this.isDir, HISTORY_PAGE_SIZE, skip);
     const page = next ?? [];
     for (const commit of page) {
       this.commits.push(commit);
@@ -455,7 +503,9 @@ export class HistoryModal extends Modal {
       else this.detailEl.scrollTop = 0;
     };
 
-    const cached = this.diffCache.get(hash);
+    // The working tree changes underfoot, so never cache its diff — always refetch.
+    const isWorking = hash === ZERO_HASH;
+    const cached = isWorking ? undefined : this.diffCache.get(hash);
     if (cached !== undefined) {
       render(cached);
       return;
@@ -464,8 +514,10 @@ export class HistoryModal extends Modal {
     this.detailEl.empty();
     this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "Loading diff…" });
     try {
-      const diff = await this.git.showPath(this.absPath, this.isDir, hash);
-      this.diffCache.set(hash, diff);
+      const diff = isWorking
+        ? await this.git.diffWorkingTree(this.absPath, this.isDir)
+        : await this.git.showPath(this.absPath, this.isDir, hash);
+      if (!isWorking) this.diffCache.set(hash, diff);
       // The user may have clicked another commit while we awaited git.
       if (this.selectedHash === hash) render(diff);
     } catch {

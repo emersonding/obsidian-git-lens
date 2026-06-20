@@ -46,6 +46,20 @@ export class GitBlameService {
     return stdout;
   }
 
+  /**
+   * Like `run`, but returns whatever git wrote to stdout even when it exits
+   * non-zero. Used for `git diff --no-index`, which deliberately exits 1 when
+   * the two inputs differ (the normal case) while still emitting the diff.
+   */
+  private async runAllowFail(cwd: string, args: string[]): Promise<string> {
+    try {
+      return await this.run(cwd, args);
+    } catch (e) {
+      const stdout = (e as { stdout?: unknown })?.stdout;
+      return typeof stdout === "string" ? stdout : "";
+    }
+  }
+
   /** `git --version`; rejects (ENOENT) if the binary can't be found. */
   async version(cwd: string): Promise<string> {
     return (await this.run(cwd, ["--version"])).trim();
@@ -188,6 +202,95 @@ export class GitBlameService {
   async showPath(absPath: string, isDir: boolean, hash: string): Promise<string> {
     const { cwd, pathspec } = historyTarget(absPath, isDir);
     return this.run(cwd, ["show", "--no-color", "--textconv", hash, "--", pathspec]);
+  }
+
+  /**
+   * Files with uncommitted changes (staged, unstaged, or untracked) within a
+   * file or directory scope. Backs the synthetic "Uncommitted changes" entry in
+   * the history viewer. Paths are repo-root-relative, matching `git diff`/`git
+   * show` output so they line up with `diffWorkingTree`. Returns an empty array
+   * when the tree is clean, or null when the path is outside any git repo / git
+   * is unavailable.
+   */
+  async statusFiles(absPath: string, isDir: boolean): Promise<ChangedFile[] | null> {
+    const { cwd, pathspec } = historyTarget(absPath, isDir);
+    try {
+      // -uall lists individual untracked files (not just their parent dir);
+      // core.quotepath=false keeps unicode paths literal so they match diffs.
+      const out = await this.run(cwd, [
+        "-c",
+        "core.quotepath=false",
+        "status",
+        "--porcelain",
+        "-uall",
+        "--",
+        pathspec,
+      ]);
+      return parseStatus(out);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Combined diff of all uncommitted changes within a file or directory scope,
+   * for the synthetic "Uncommitted changes" entry. Covers staged + unstaged
+   * edits to tracked files (`git diff HEAD`) plus untracked files (each diffed
+   * against /dev/null, which git special-cases as the empty blob), so new notes
+   * show up too. `--textconv` decrypts git-crypt blobs (a no-op otherwise).
+   * Paths come out repo-root-relative, matching committed diffs.
+   */
+  async diffWorkingTree(absPath: string, isDir: boolean): Promise<string> {
+    const { cwd, pathspec } = historyTarget(absPath, isDir);
+
+    let tracked: string;
+    try {
+      tracked = await this.run(cwd, ["diff", "HEAD", "--no-color", "--textconv", "--", pathspec]);
+    } catch {
+      // No HEAD yet (no commits) or a git error — fall back to the index diff.
+      tracked = await this.runAllowFail(cwd, ["diff", "--no-color", "--textconv", "--", pathspec]);
+    }
+
+    // Untracked files aren't part of `git diff HEAD`; diff each against /dev/null.
+    // `git status` already gives repo-root-relative paths, so the no-index diffs
+    // must run from the repo root for those paths to resolve.
+    const statusOut = await this.runAllowFail(cwd, [
+      "-c",
+      "core.quotepath=false",
+      "status",
+      "--porcelain",
+      "-uall",
+      "--",
+      pathspec,
+    ]);
+    const untracked = statusOut
+      .split("\n")
+      .filter((l) => l.startsWith("??"))
+      .map((l) => l.slice(3))
+      .filter(Boolean);
+
+    if (untracked.length === 0) return tracked;
+
+    let repoRoot: string;
+    try {
+      repoRoot = (await this.run(cwd, ["rev-parse", "--show-toplevel"])).trim();
+    } catch {
+      return tracked; // can't resolve root — return what we have
+    }
+
+    let extra = "";
+    for (const p of untracked) {
+      extra += await this.runAllowFail(repoRoot, [
+        "diff",
+        "--no-index",
+        "--no-color",
+        "--textconv",
+        "--",
+        "/dev/null",
+        p,
+      ]);
+    }
+    return tracked + extra;
   }
 
   /**
@@ -369,6 +472,33 @@ function parseNameStatus(line: string): ChangedFile | null {
     return { status: code, oldPath: parts[1], path: parts[2] };
   }
   return { status: code, path: parts[1] };
+}
+
+/**
+ * Parse `git status --porcelain` (v1) into ChangedFile[]. Each line is
+ * "XY path" (X = index status, Y = worktree status), or "R  old -> new" for
+ * renames/copies. Untracked ("??") files are surfaced as added. The worktree
+ * status (Y) is preferred over the index status so the letter reflects the
+ * uncommitted edit; renames keep their index status and old path. Exported for
+ * tests.
+ */
+export function parseStatus(out: string): ChangedFile[] {
+  const files: ChangedFile[] = [];
+  for (const line of out.split("\n")) {
+    if (line.length < 4) continue; // "XY path" needs at least 4 chars
+    const x = line[0];
+    const y = line[1];
+    const rest = line.slice(3);
+    if (x === "?" || y === "?") {
+      files.push({ status: "A", path: rest }); // untracked → new file
+    } else if (x === "R" || x === "C") {
+      const [oldPath, newPath] = rest.split(" -> ");
+      files.push({ status: x, path: newPath ?? rest, oldPath });
+    } else {
+      files.push({ status: y !== " " ? y : x, path: rest });
+    }
+  }
+  return files;
 }
 
 /**
