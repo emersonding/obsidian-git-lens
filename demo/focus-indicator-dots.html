@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Git Lens — minimal focus badges</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f6f7f9;
+    --bg-modifier-border: #e3e5e8;
+    --text-normal: #2e3338;
+    --text-muted: #888e96;
+    --text-faint: #adb3ba;
+    --accent: #6b62e6;
+    --accent-soft: #ece9ff;
+    --green: #2fae5f;
+    --green-soft: #e3f6ea;
+    --red: #c8483a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--sans); color: var(--text-normal); background: #eef0f3; padding: 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    margin-bottom: 22px; padding: 14px 16px;
+    background: var(--bg); border: 1px solid var(--bg-modifier-border); border-radius: 10px;
+  }
+  .controls label { font-size: 13px; font-weight: 600; }
+  .controls .hint { font-size: 12px; color: var(--text-muted); }
+  button {
+    font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--bg-modifier-border); background: var(--bg); color: var(--text-normal); cursor: pointer;
+  }
+  button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+  .card { background: var(--bg); border: 1px solid var(--bg-modifier-border); border-radius: 12px; padding: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; }
+  .card p.desc { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; min-height: 30px; }
+
+  .modal { display: flex; gap: 10px; height: 250px; background: var(--bg); border: 1px solid var(--bg-modifier-border); border-radius: 8px; padding: 8px; }
+  .pane { position: relative; border-radius: 6px; overflow: hidden; transition: background .15s ease; }
+  .list { flex: 0 0 150px; border-right: 1px solid var(--bg-modifier-border); padding-right: 2px; overflow-y: auto; }
+  .detail { flex: 1 1 auto; overflow: auto; background: var(--bg-secondary); }
+
+  .commit { padding: 7px 8px; border-radius: 5px; }
+  .commit + .commit { margin-top: 2px; }
+  .commit.sel { background: var(--accent-soft); }
+  .commit .summary { font-size: 12px; font-weight: 600; line-height: 1.3; }
+  .commit .meta { font-size: 10px; color: var(--text-faint); margin-top: 2px; font-family: var(--mono); }
+
+  .diff { font-family: var(--mono); font-size: 11px; line-height: 1.5; padding: 6px 8px; }
+  .diff .h { color: var(--text-muted); }
+  .diff .add { color: var(--green); }
+  .diff .del { color: var(--red); }
+
+  /* ===== shared badge primitives, hidden unless pane focused ===== */
+  .badge { position: absolute; opacity: 0; transition: opacity .15s ease, transform .15s ease; pointer-events: none; }
+  .pane.focused .badge { opacity: 1; }
+
+  /* =========================================================
+     OPTIONS — scoped by class on .modal
+     ========================================================= */
+
+  /* E1 · text chip (the original E) */
+  .opt-chip .chip { top: 6px; right: 6px;
+    font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent); background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px; }
+  .opt-chip .pane.focused { background-color: rgba(107,98,230,.05); }
+
+  /* E2 · small green dot, top-right */
+  .opt-dot .dot { top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+
+  /* E3 · green dot with soft pulse halo */
+  .opt-pulse .dot { top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 0 rgba(47,174,95,.55); }
+  .opt-pulse .pane.focused .dot { animation: pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(47,174,95,.5);} 70% { box-shadow: 0 0 0 7px rgba(47,174,95,0);} 100% { box-shadow: 0 0 0 0 rgba(47,174,95,0);} }
+
+  /* E4 · dot + label pill ("● Active") */
+  .opt-pill .pill { top: 6px; right: 6px; display: flex; align-items: center; gap: 5px;
+    font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--green);
+    background: var(--green-soft); border-radius: 999px; padding: 2px 7px 2px 6px; }
+  .opt-pill .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  /* E5 · dot in the corner of the SELECTED commit / first diff line (inline marker) */
+  .opt-inline .dot { top: 11px; left: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .opt-inline .list .badge { top: 12px; }          /* aligns near first/selected commit */
+  .opt-inline .detail .badge { top: 10px; left: 4px; }
+
+  /* E6 · tiny caret pointing INTO the focused pane from the gutter */
+  .opt-caret .caret { top: 10px; width: 0; height: 0; }
+  .opt-caret .list .caret  { right: 2px; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-right: 6px solid var(--accent); }
+  .opt-caret .detail .caret{ left: 2px;  border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 6px solid var(--accent); }
+
+  /* E7 · bottom status bar dot + word */
+  .opt-status .status { left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px;
+    font-size: 9px; font-weight: 600; color: var(--green); background: var(--green-soft);
+    padding: 3px 8px; border-top: 1px solid rgba(47,174,95,.25); }
+  .opt-status .status::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  /* E8 · ring + dot combo (soft ring AND a green dot) */
+  .opt-combo .pane.focused { box-shadow: inset 0 0 0 1px var(--bg-modifier-border); }
+  .opt-combo .pane.focused { box-shadow: inset 0 0 0 1.5px var(--green); }
+  .opt-combo .dot { top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+</style>
+</head>
+<body>
+  <h1>Git Lens — minimal focus badges</h1>
+  <p class="sub">Variations on E: small markers instead of borders. Click a pane (or use the toggle) to move focus. Green-dot family is E2–E4, E7, E8.</p>
+
+  <div class="controls">
+    <label>Focus:</label>
+    <button id="focusList" class="active">◀ Commits</button>
+    <button id="focusDetail">Diff ▶</button>
+    <span class="hint">Click any pane to move focus.</span>
+  </div>
+
+  <div class="gallery" id="gallery"></div>
+
+  <script>
+    const OPTIONS = [
+      { cls:"opt-chip",   title:"E1 · Text chip (original)", badge:`<span class="badge chip">focus</span>`, desc:"Accent 'FOCUS' chip top-right + faint tint. Explicit, self-explaining." },
+      { cls:"opt-dot",    title:"E2 · Small green dot", badge:`<span class="badge dot"></span>`, desc:"A single 8px green dot in the active pane's corner. Tiny, calm, unmistakable once learned." },
+      { cls:"opt-pulse",  title:"E3 · Green dot + pulse", badge:`<span class="badge dot"></span>`, desc:"Same dot with a slow halo pulse — draws the eye on focus change, then settles. Slightly more attention-grabbing." },
+      { cls:"opt-pill",   title:"E4 · Dot + 'Active' pill", badge:`<span class="badge pill">Active</span>`, desc:"Green dot inside a soft pill with a label. Most legible for first-time users; a touch more chrome." },
+      { cls:"opt-inline", title:"E5 · Inline dot marker", badge:`<span class="badge dot"></span>`, desc:"Dot tucked beside the top content (selected commit / first diff line) instead of floating in the corner." },
+      { cls:"opt-caret",  title:"E6 · Gutter caret", badge:`<span class="badge caret"></span>`, desc:"A tiny triangle in the gutter pointing INTO the active pane. Directional, no text." },
+      { cls:"opt-status", title:"E7 · Bottom status strip", badge:`<span class="badge status">Active — ↑↓ here</span>`, desc:"A slim green strip along the pane bottom naming where keys act. Most informative, takes a sliver of height." },
+      { cls:"opt-combo",  title:"E8 · Green ring + dot", badge:`<span class="badge dot"></span>`, desc:"Thin green inset ring plus a corner dot. Hybrid of border + badge for stronger peripheral signal." },
+    ];
+
+    const listHTML = `
+      <div class="commit sel"><div class="summary">keyboard navigation</div><div class="meta">829194e · Nan</div></div>
+      <div class="commit"><div class="summary">blame click opens history</div><div class="meta">d3f822c · Nan</div></div>
+      <div class="commit"><div class="summary">word-level diff</div><div class="meta">7c2cc30 · Nan</div></div>
+      <div class="commit"><div class="summary">keep expand icon clear</div><div class="meta">4bc1929 · Nan</div></div>
+      <div class="commit"><div class="summary">history for all files</div><div class="meta">26a5f84 · Nan</div></div>`;
+
+    const diffHTML = `
+      <div class="diff">
+        <div class="h">@@ -196,10 +196,14 @@ onOpen()</div>
+        <div class="del">- this.scope.register([], "ArrowLeft", () =&gt; {</div>
+        <div class="add">+   this.setFocus("commits");</div>
+        <div>&nbsp; });</div>
+        <div class="add">+ this.scope.register([], "ArrowUp", () =&gt; {</div>
+        <div class="add">+   if (this.focusedPane === "diff")</div>
+        <div class="add">+     this.scrollDetail(-STEP, 0);</div>
+        <div class="add">+   else this.selectRelative(-1);</div>
+        <div>&nbsp; });</div>
+      </div>`;
+
+    function buildCard(opt) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <h2>${opt.title}</h2>
+        <p class="desc">${opt.desc}</p>
+        <div class="modal ${opt.cls}">
+          <div class="pane list" data-pane="list">${listHTML}${opt.badge}</div>
+          <div class="pane detail" data-pane="detail">${diffHTML}${opt.badge}</div>
+        </div>`;
+      card.querySelectorAll(".pane").forEach(p => p.addEventListener("click", () => setFocus(p.dataset.pane)));
+      return card;
+    }
+
+    function setFocus(which) {
+      document.querySelectorAll(".modal .pane").forEach(p => p.classList.toggle("focused", p.dataset.pane === which));
+      document.getElementById("focusList").classList.toggle("active", which === "list");
+      document.getElementById("focusDetail").classList.toggle("active", which === "detail");
+    }
+
+    const gallery = document.getElementById("gallery");
+    OPTIONS.forEach(o => gallery.appendChild(buildCard(o)));
+    document.getElementById("focusList").addEventListener("click", () => setFocus("list"));
+    document.getElementById("focusDetail").addEventListener("click", () => setFocus("detail"));
+    setFocus("list");
+  </script>
+</body>
+</html>

@@ -121,6 +121,8 @@ interface CommitRow {
 export class HistoryModal extends Modal {
   private detailEl!: HTMLElement;
   private listEl!: HTMLElement;
+  private listDot!: HTMLElement;
+  private detailDot!: HTMLElement;
   private titleTextEl!: HTMLElement;
   private rowsEl!: HTMLElement;
   private moreEl!: HTMLElement;
@@ -192,6 +194,10 @@ export class HistoryModal extends Modal {
     this.rowsEl = this.listEl.createDiv({ cls: "git-lens-history-rows" });
     this.moreEl = this.listEl.createDiv({ cls: "git-lens-history-more" });
     this.detailEl = split.createDiv({ cls: "git-lens-history-detail" });
+    // Focus-indicator dots live in the (non-scrolling) split so they stay pinned
+    // and survive diff re-renders. Only the active pane's dot is shown.
+    this.listDot = split.createDiv({ cls: "git-lens-focus-dot is-list" });
+    this.detailDot = split.createDiv({ cls: "git-lens-focus-dot is-detail" });
     // Clicking inside the diff pane focuses it; clicking commits/files focuses
     // the list (handled where those rows are wired up).
     this.detailEl.addEventListener("mousedown", () => this.setFocus("diff"));
@@ -427,11 +433,11 @@ export class HistoryModal extends Modal {
     this.rowByHash.get(commit.hash)?.scrollIntoView({ block: "nearest" });
   }
 
-  /** Move keyboard focus to a pane and reflect it visually. */
+  /** Move keyboard focus to a pane and reflect it with the pane's dot. */
   private setFocus(pane: "commits" | "diff"): void {
     this.focusedPane = pane;
-    this.listEl.toggleClass("is-focused", pane === "commits");
-    this.detailEl.toggleClass("is-focused", pane === "diff");
+    this.listDot.toggleClass("is-on", pane === "commits");
+    this.detailDot.toggleClass("is-on", pane === "diff");
   }
 
   /** Scroll the diff detail pane by the given pixel deltas. */

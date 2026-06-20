@@ -278,6 +278,7 @@
   min-height: 0;
   display: flex;
   gap: 12px;
+  position: relative;
 }
 
 .git-lens-history-list {
@@ -291,18 +292,34 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: auto;
-  border-radius: 6px;
 }
 
-/* Highlight the pane that Up/Down currently acts on. A subtle inset ring keeps
-   the layout from shifting. */
-.git-lens-history-list.is-focused,
-.git-lens-history-detail.is-focused {
-  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+/* A small dot marks the pane Up/Down currently acts on. Rendered as an overlay
+   in the (non-scrolling) split so it stays pinned and survives diff re-renders.
+   Sits in the outer-top corner of whichever pane is focused. */
+.git-lens-focus-dot {
+  position: absolute;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green, #2fae5f);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.git-lens-history-list.is-focused {
-  border-radius: 6px;
+.git-lens-focus-dot.is-list {
+  left: 8px;
+}
+
+.git-lens-focus-dot.is-detail {
+  right: 8px;
+}
+
+.git-lens-focus-dot.is-on {
+  opacity: 1;
 }
 
 /* The detail pane owns scrolling; let the diff fill it. */
