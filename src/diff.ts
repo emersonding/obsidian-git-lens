@@ -121,8 +121,8 @@ interface CommitRow {
 export class HistoryModal extends Modal {
   private detailEl!: HTMLElement;
   private listEl!: HTMLElement;
-  private listDot!: HTMLElement;
-  private detailDot!: HTMLElement;
+  private listMark!: HTMLElement;
+  private detailMark!: HTMLElement;
   private titleTextEl!: HTMLElement;
   private rowsEl!: HTMLElement;
   private moreEl!: HTMLElement;
@@ -192,18 +192,18 @@ export class HistoryModal extends Modal {
     const split = this.contentEl.createDiv({ cls: "git-lens-history" });
 
     // Each pane sits in a non-scrolling, relatively-positioned wrapper that also
-    // holds the pane's focus dot. Anchoring the dot to its own wrapper keeps it
-    // pinned over the right pane (regardless of scroll) and out of the diff
-    // content that gets re-rendered on commit switch.
+    // holds the pane's focus caret. Anchoring the caret to its own wrapper keeps
+    // it pinned to the pane (regardless of scroll) and out of the diff content
+    // that gets re-rendered on commit switch.
     const listWrap = split.createDiv({ cls: "git-lens-history-list-wrap" });
     this.listEl = listWrap.createDiv({ cls: "git-lens-history-list" });
     this.rowsEl = this.listEl.createDiv({ cls: "git-lens-history-rows" });
     this.moreEl = this.listEl.createDiv({ cls: "git-lens-history-more" });
-    this.listDot = listWrap.createDiv({ cls: "git-lens-focus-dot is-list" });
+    this.listMark = listWrap.createDiv({ cls: "git-lens-focus-mark is-list" });
 
     const detailWrap = split.createDiv({ cls: "git-lens-history-detail-wrap" });
     this.detailEl = detailWrap.createDiv({ cls: "git-lens-history-detail" });
-    this.detailDot = detailWrap.createDiv({ cls: "git-lens-focus-dot is-detail" });
+    this.detailMark = detailWrap.createDiv({ cls: "git-lens-focus-mark is-detail" });
 
     // Clicking inside the diff pane focuses it; clicking commits/files focuses
     // the list (handled where those rows are wired up).
@@ -440,11 +440,11 @@ export class HistoryModal extends Modal {
     this.rowByHash.get(commit.hash)?.scrollIntoView({ block: "nearest" });
   }
 
-  /** Move keyboard focus to a pane and reflect it with the pane's dot. */
+  /** Move keyboard focus to a pane and reflect it with the pane's caret. */
   private setFocus(pane: "commits" | "diff"): void {
     this.focusedPane = pane;
-    this.listDot.toggleClass("is-on", pane === "commits");
-    this.detailDot.toggleClass("is-on", pane === "diff");
+    this.listMark.toggleClass("is-on", pane === "commits");
+    this.detailMark.toggleClass("is-on", pane === "diff");
   }
 
   /** Scroll the diff detail pane by the given pixel deltas. */

@@ -310,43 +310,37 @@
   overflow: auto;
 }
 
-/* A small dot marks the pane Up/Down currently acts on. Anchored to the pane's
-   non-scrolling wrapper so it stays pinned and survives diff re-renders. Sits in
-   the top-right corner of whichever pane is focused. */
-.git-lens-focus-dot {
+/* A caret marks the pane Up/Down currently acts on. Anchored to the pane's
+   non-scrolling wrapper (so it stays pinned and survives diff re-renders), it
+   sits at the inner/divider edge and points into the focused pane. */
+.git-lens-focus-mark {
   position: absolute;
-  top: 8px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-green, #2fae5f);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
   opacity: 0;
   transition: opacity 0.15s ease;
   pointer-events: none;
   z-index: 2;
 }
 
-.git-lens-focus-dot.is-list,
-.git-lens-focus-dot.is-detail {
-  right: 8px;
+/* Commit list: caret at its right edge, pointing left into the list. */
+.git-lens-focus-mark.is-list {
+  right: 2px;
+  border-right: 7px solid var(--interactive-accent);
 }
 
-/* Active pane's dot: fade in and emit a slow halo pulse. */
-.git-lens-focus-dot.is-on {
+/* Diff pane: caret at its left edge, pointing right into the diff. */
+.git-lens-focus-mark.is-detail {
+  left: 2px;
+  border-left: 7px solid var(--interactive-accent);
+}
+
+.git-lens-focus-mark.is-on {
   opacity: 1;
-  animation: git-lens-focus-pulse 1.6s ease-out infinite;
-}
-
-@keyframes git-lens-focus-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(47, 174, 95, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 7px rgba(47, 174, 95, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(47, 174, 95, 0);
-  }
 }
 
 /* The detail pane owns scrolling; let the diff fill it. */
