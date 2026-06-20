@@ -291,6 +291,18 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: auto;
+  border-radius: 6px;
+}
+
+/* Highlight the pane that Up/Down currently acts on. A subtle inset ring keeps
+   the layout from shifting. */
+.git-lens-history-list.is-focused,
+.git-lens-history-detail.is-focused {
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+.git-lens-history-list.is-focused {
+  border-radius: 6px;
 }
 
 /* The detail pane owns scrolling; let the diff fill it. */

@@ -120,10 +120,13 @@ interface CommitRow {
  */
 export class HistoryModal extends Modal {
   private detailEl!: HTMLElement;
+  private listEl!: HTMLElement;
   private titleTextEl!: HTMLElement;
   private rowsEl!: HTMLElement;
   private moreEl!: HTMLElement;
   private selectedHash: string | null = null;
+  /** Which pane Up/Down acts on: switch commits vs. scroll the diff. */
+  private focusedPane: "commits" | "diff" = "commits";
   private allExpanded = false;
   private loading = false;
   private exhausted = false;
@@ -185,29 +188,36 @@ export class HistoryModal extends Modal {
     });
 
     const split = this.contentEl.createDiv({ cls: "git-lens-history" });
-    const list = split.createDiv({ cls: "git-lens-history-list" });
-    this.rowsEl = list.createDiv({ cls: "git-lens-history-rows" });
-    this.moreEl = list.createDiv({ cls: "git-lens-history-more" });
+    this.listEl = split.createDiv({ cls: "git-lens-history-list" });
+    this.rowsEl = this.listEl.createDiv({ cls: "git-lens-history-rows" });
+    this.moreEl = this.listEl.createDiv({ cls: "git-lens-history-more" });
     this.detailEl = split.createDiv({ cls: "git-lens-history-detail" });
+    // Clicking inside the diff pane focuses it; clicking commits/files focuses
+    // the list (handled where those rows are wired up).
+    this.detailEl.addEventListener("mousedown", () => this.setFocus("diff"));
     syncWrap();
 
-    // Up/Down switch the selected commit (instead of scrolling the page).
+    // Up/Down depend on the focused pane: switch the selected commit when the
+    // list is focused, or scroll the diff when the diff pane is focused.
     // Returning false tells Obsidian to preventDefault, suppressing the scroll.
     this.scope.register([], "ArrowUp", () => {
-      void this.selectRelative(-1);
+      if (this.focusedPane === "diff") this.scrollDetail(-VERTICAL_STEP, 0);
+      else void this.selectRelative(-1);
       return false;
     });
     this.scope.register([], "ArrowDown", () => {
-      void this.selectRelative(1);
+      if (this.focusedPane === "diff") this.scrollDetail(VERTICAL_STEP, 0);
+      else void this.selectRelative(1);
       return false;
     });
-    // Left/Right scroll the diff horizontally (like h/l).
+    // Left/Right move focus between the panes (Left = commits, Right = diff).
+    // Horizontal diff scrolling stays on h/l.
     this.scope.register([], "ArrowLeft", () => {
-      this.scrollDetail(0, -HORIZONTAL_STEP);
+      this.setFocus("commits");
       return false;
     });
     this.scope.register([], "ArrowRight", () => {
-      this.scrollDetail(0, HORIZONTAL_STEP);
+      this.setFocus("diff");
       return false;
     });
 
@@ -241,6 +251,7 @@ export class HistoryModal extends Modal {
     for (const commit of this.commits) this.renderCommit(commit);
     this.renderMore();
     this.updateTitle();
+    this.setFocus("commits");
 
     if (this.commits.length) {
       if (this.focusHash) void this.focusCommit(this.focusHash);
@@ -287,7 +298,10 @@ export class HistoryModal extends Modal {
       e.stopPropagation();
       setExpanded(!expanded);
     });
-    main.addEventListener("click", () => void this.select(commit.hash));
+    main.addEventListener("click", () => {
+      this.setFocus("commits");
+      void this.select(commit.hash);
+    });
 
     setExpanded(this.allExpanded);
     this.rows.push({ setExpanded });
@@ -305,6 +319,7 @@ export class HistoryModal extends Modal {
     path.createSpan({ text: file.path });
     fr.addEventListener("click", (e) => {
       e.stopPropagation();
+      this.setFocus("commits");
       void this.select(hash, file.path);
     });
   }
@@ -410,6 +425,13 @@ export class HistoryModal extends Modal {
     const commit = this.commits[next];
     await this.select(commit.hash);
     this.rowByHash.get(commit.hash)?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** Move keyboard focus to a pane and reflect it visually. */
+  private setFocus(pane: "commits" | "diff"): void {
+    this.focusedPane = pane;
+    this.listEl.toggleClass("is-focused", pane === "commits");
+    this.detailEl.toggleClass("is-focused", pane === "diff");
   }
 
   /** Scroll the diff detail pane by the given pixel deltas. */
