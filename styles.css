@@ -278,6 +278,7 @@
   min-height: 0;
   display: flex;
   gap: 12px;
+  position: relative;
 }
 
 .git-lens-history-list {
@@ -293,19 +294,38 @@
   overflow: auto;
 }
 
-/* Focus indicator: a soft accent halo around the active pane — no border or
-   ring. Up/Down act on whichever pane glows. The box-shadow isn't clipped by
-   the pane's own overflow, so it reads even while the pane scrolls. */
-.git-lens-history-list,
-.git-lens-history-detail {
-  border-radius: 6px;
-  transition: box-shadow 0.18s ease;
+/* Focus indicator: a small green dot at the diff pane's top-right corner, shown
+   only when the diff pane is focused (the commit list has no marker). Pinned in
+   the non-scrolling split so it survives diff re-renders and scrolling. */
+.git-lens-focus-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green, #2fae5f);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.git-lens-history-list.is-focused,
-.git-lens-history-detail.is-focused {
-  box-shadow: 0 0 22px -4px
-    hsla(var(--accent-h, 254), var(--accent-s, 80%), var(--accent-l, 68%), 0.45);
+.git-lens-focus-dot.is-on {
+  opacity: 1;
+  animation: git-lens-focus-pulse 1.6s ease-out infinite;
+}
+
+@keyframes git-lens-focus-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(47, 174, 95, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(47, 174, 95, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 174, 95, 0);
+  }
 }
 
 /* The detail pane owns scrolling; let the diff fill it. */
