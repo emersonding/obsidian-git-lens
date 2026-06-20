@@ -312,8 +312,7 @@
 
 /* A small dot marks the pane Up/Down currently acts on. Anchored to the pane's
    non-scrolling wrapper so it stays pinned and survives diff re-renders. Sits in
-   the outer-top corner of whichever pane is focused (far left for the commit
-   list, far right for the diff). */
+   the top-right corner of whichever pane is focused. */
 .git-lens-focus-dot {
   position: absolute;
   top: 8px;
@@ -327,10 +326,7 @@
   z-index: 2;
 }
 
-.git-lens-focus-dot.is-list {
-  left: 8px;
-}
-
+.git-lens-focus-dot.is-list,
 .git-lens-focus-dot.is-detail {
   right: 8px;
 }
