@@ -190,14 +190,21 @@ export class HistoryModal extends Modal {
     });
 
     const split = this.contentEl.createDiv({ cls: "git-lens-history" });
-    this.listEl = split.createDiv({ cls: "git-lens-history-list" });
+
+    // Each pane sits in a non-scrolling, relatively-positioned wrapper that also
+    // holds the pane's focus dot. Anchoring the dot to its own wrapper keeps it
+    // pinned over the right pane (regardless of scroll) and out of the diff
+    // content that gets re-rendered on commit switch.
+    const listWrap = split.createDiv({ cls: "git-lens-history-list-wrap" });
+    this.listEl = listWrap.createDiv({ cls: "git-lens-history-list" });
     this.rowsEl = this.listEl.createDiv({ cls: "git-lens-history-rows" });
     this.moreEl = this.listEl.createDiv({ cls: "git-lens-history-more" });
-    this.detailEl = split.createDiv({ cls: "git-lens-history-detail" });
-    // Focus-indicator dots live in the (non-scrolling) split so they stay pinned
-    // and survive diff re-renders. Only the active pane's dot is shown.
-    this.listDot = split.createDiv({ cls: "git-lens-focus-dot is-list" });
-    this.detailDot = split.createDiv({ cls: "git-lens-focus-dot is-detail" });
+    this.listDot = listWrap.createDiv({ cls: "git-lens-focus-dot is-list" });
+
+    const detailWrap = split.createDiv({ cls: "git-lens-history-detail-wrap" });
+    this.detailEl = detailWrap.createDiv({ cls: "git-lens-history-detail" });
+    this.detailDot = detailWrap.createDiv({ cls: "git-lens-focus-dot is-detail" });
+
     // Clicking inside the diff pane focuses it; clicking commits/files focuses
     // the list (handled where those rows are wired up).
     this.detailEl.addEventListener("mousedown", () => this.setFocus("diff"));
