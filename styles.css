@@ -280,25 +280,8 @@
   gap: 12px;
 }
 
-/* Non-scrolling wrappers own the layout and anchor each pane's focus dot. */
-.git-lens-history-list-wrap {
-  flex: 0 0 320px;
-  min-height: 0;
-  position: relative;
-  display: flex;
-}
-
-.git-lens-history-detail-wrap {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  position: relative;
-  display: flex;
-}
-
 .git-lens-history-list {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 320px;
   overflow-y: auto;
   border-right: 1px solid var(--background-modifier-border);
   padding-right: 8px;
@@ -310,37 +293,19 @@
   overflow: auto;
 }
 
-/* A caret marks the pane Up/Down currently acts on. Anchored to the pane's
-   non-scrolling wrapper (so it stays pinned and survives diff re-renders), it
-   sits at the inner/divider edge and points into the focused pane. */
-.git-lens-focus-mark {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  pointer-events: none;
-  z-index: 2;
+/* Focus indicator: a soft accent halo around the active pane — no border or
+   ring. Up/Down act on whichever pane glows. The box-shadow isn't clipped by
+   the pane's own overflow, so it reads even while the pane scrolls. */
+.git-lens-history-list,
+.git-lens-history-detail {
+  border-radius: 6px;
+  transition: box-shadow 0.18s ease;
 }
 
-/* Commit list: caret at its right edge, pointing left into the list. */
-.git-lens-focus-mark.is-list {
-  right: 2px;
-  border-right: 7px solid var(--interactive-accent);
-}
-
-/* Diff pane: caret at its left edge, pointing right into the diff. */
-.git-lens-focus-mark.is-detail {
-  left: 2px;
-  border-left: 7px solid var(--interactive-accent);
-}
-
-.git-lens-focus-mark.is-on {
-  opacity: 1;
+.git-lens-history-list.is-focused,
+.git-lens-history-detail.is-focused {
+  box-shadow: 0 0 22px -4px
+    hsla(var(--accent-h, 254), var(--accent-s, 80%), var(--accent-l, 68%), 0.45);
 }
 
 /* The detail pane owns scrolling; let the diff fill it. */

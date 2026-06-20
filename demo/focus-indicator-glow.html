@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Git Lens — focus glow / color variants</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f6f7f9;
+    --bg-modifier-border: #e3e5e8;
+    --text-normal: #2e3338;
+    --text-muted: #888e96;
+    --text-faint: #adb3ba;
+    --accent: #6b62e6;
+    --accent-rgb: 107, 98, 230;
+    --accent-soft: #ece9ff;
+    --green: #2fae5f;
+    --red: #c8483a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--sans); color: var(--text-normal); background: #eef0f3; padding: 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; max-width: 760px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    margin-bottom: 22px; padding: 14px 16px;
+    background: var(--bg); border: 1px solid var(--bg-modifier-border); border-radius: 10px;
+  }
+  .controls label { font-size: 13px; font-weight: 600; }
+  .controls .hint { font-size: 12px; color: var(--text-muted); }
+  button {
+    font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--bg-modifier-border); background: var(--bg); color: var(--text-normal); cursor: pointer;
+  }
+  button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 22px; }
+  .card { background: var(--bg); border: 1px solid var(--bg-modifier-border); border-radius: 12px; padding: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; }
+  .card p.desc { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; min-height: 30px; }
+
+  /* extra padding so outer glows have room to read */
+  .modal { display: flex; gap: 14px; height: 250px; background: var(--bg);
+    border: 1px solid var(--bg-modifier-border); border-radius: 8px; padding: 14px; }
+  .pane { position: relative; border-radius: 8px; overflow: hidden;
+    transition: box-shadow .18s ease, background-color .18s ease, transform .18s ease, filter .18s ease; }
+  .list { flex: 0 0 150px; overflow-y: auto; padding-right: 2px; }
+  .detail { flex: 1 1 auto; overflow: auto; background: var(--bg-secondary); }
+
+  .commit { padding: 7px 8px; border-radius: 5px; }
+  .commit + .commit { margin-top: 2px; }
+  .commit.sel { background: var(--accent-soft); }
+  .commit .summary { font-size: 12px; font-weight: 600; line-height: 1.3; }
+  .commit .meta { font-size: 10px; color: var(--text-faint); margin-top: 2px; font-family: var(--mono); }
+
+  .diff { font-family: var(--mono); font-size: 11px; line-height: 1.5; padding: 6px 8px; }
+  .diff .h { color: var(--text-muted); }
+  .diff .add { color: var(--green); }
+  .diff .del { color: var(--red); }
+
+  /* =========================================================
+     VARIANTS — each scoped by class on .modal. NO borders/rings.
+     ========================================================= */
+
+  /* D1 · Soft outer glow (halo drop shadow) */
+  .v-halo .pane.focused { box-shadow: 0 0 22px -4px rgba(var(--accent-rgb), .45); }
+
+  /* D2 · Inner soft glow (blurred inset, no hard edge) */
+  .v-inner .pane.focused { box-shadow: inset 0 0 22px -6px rgba(var(--accent-rgb), .55); }
+
+  /* D3 · Flat background tint */
+  .v-tint .list.focused { background-color: var(--accent-soft); }
+  .v-tint .detail.focused { background-color: #efedfd; }
+
+  /* D4 · Top radial glow overlay (light from the top edge) */
+  .v-topglow .pane.focused::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 70% at 50% 0%, rgba(var(--accent-rgb), .18), transparent 65%);
+  }
+
+  /* D5 · Elevation lift (raise + soft shadow) */
+  .v-lift .pane.focused { transform: translateY(-3px); box-shadow: 0 10px 22px -8px rgba(var(--accent-rgb), .5); }
+
+  /* D6 · Ambient combo (faint tint + soft outer glow) */
+  .v-ambient .list.focused { background-color: var(--accent-soft); }
+  .v-ambient .detail.focused { background-color: #efedfd; }
+  .v-ambient .pane.focused { box-shadow: 0 0 18px -6px rgba(var(--accent-rgb), .4); }
+
+  /* D7 · Dim the OTHER pane (focused stays full; color contrast, no glow) */
+  .v-dim .pane { filter: grayscale(.25) brightness(.97); opacity: .7; }
+  .v-dim .pane.focused { filter: none; opacity: 1; }
+
+  /* D8 · Soft colored vignette (inset radial, edges tinted) */
+  .v-vignette .pane.focused::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 30px -4px rgba(var(--accent-rgb), .35);
+    border-radius: inherit;
+  }
+</style>
+</head>
+<body>
+  <h1>Git Lens — focus glow / color variants</h1>
+  <p class="sub">Expanding option D: indicate the focused pane with soft color, shadow, or glow only — no rings or hard borders. Click a pane (or use the toggle) to move focus.</p>
+
+  <div class="controls">
+    <label>Focus:</label>
+    <button id="focusList" class="active">◀ Commits</button>
+    <button id="focusDetail">Diff ▶</button>
+    <span class="hint">Click any pane to move focus.</span>
+  </div>
+
+  <div class="gallery" id="gallery"></div>
+
+  <script>
+    const OPTIONS = [
+      { cls:"v-halo",     title:"D1 · Soft outer halo", desc:"A soft accent glow radiates around the focused pane. No hard edge; reads as a gentle halo." },
+      { cls:"v-inner",    title:"D2 · Inner soft glow", desc:"Blurred inset glow tints the pane's inner edges. Stays inside the pane — good when outer space is tight." },
+      { cls:"v-tint",     title:"D3 · Flat background tint", desc:"Focused pane gets a subtle accent-tinted background. Calmest option; very low visual noise." },
+      { cls:"v-topglow",  title:"D4 · Top radial glow", desc:"A soft light blooms from the pane's top edge, like a spotlight. Directional and subtle." },
+      { cls:"v-lift",     title:"D5 · Elevation lift", desc:"Focused pane rises a few px with a soft drop shadow. Tactile 'this is active' depth cue." },
+      { cls:"v-ambient",  title:"D6 · Ambient (tint + glow)", desc:"Combines a faint tint with a soft outer glow. Strongest of the soft options without any border." },
+      { cls:"v-dim",      title:"D7 · Dim the other pane", desc:"Focused pane stays full-color; the other fades & desaturates. Pure contrast, no glow at all." },
+      { cls:"v-vignette", title:"D8 · Colored vignette", desc:"Soft accent tint pools at the pane's edges (inset radial). Subtle framing without a line." },
+    ];
+
+    const listHTML = `
+      <div class="commit sel"><div class="summary">keyboard navigation</div><div class="meta">829194e · Nan</div></div>
+      <div class="commit"><div class="summary">blame click opens history</div><div class="meta">d3f822c · Nan</div></div>
+      <div class="commit"><div class="summary">word-level diff</div><div class="meta">7c2cc30 · Nan</div></div>
+      <div class="commit"><div class="summary">keep expand icon clear</div><div class="meta">4bc1929 · Nan</div></div>
+      <div class="commit"><div class="summary">history for all files</div><div class="meta">26a5f84 · Nan</div></div>`;
+
+    const diffHTML = `
+      <div class="diff">
+        <div class="h">@@ -196,10 +196,14 @@ onOpen()</div>
+        <div class="del">- this.scope.register([], "ArrowLeft", () =&gt; {</div>
+        <div class="add">+   this.setFocus("commits");</div>
+        <div>&nbsp; });</div>
+        <div class="add">+ this.scope.register([], "ArrowUp", () =&gt; {</div>
+        <div class="add">+   if (this.focusedPane === "diff")</div>
+        <div class="add">+     this.scrollDetail(-STEP, 0);</div>
+        <div class="add">+   else this.selectRelative(-1);</div>
+        <div>&nbsp; });</div>
+      </div>`;
+
+    function buildCard(opt) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <h2>${opt.title}</h2>
+        <p class="desc">${opt.desc}</p>
+        <div class="modal ${opt.cls}">
+          <div class="pane list" data-pane="list">${listHTML}</div>
+          <div class="pane detail" data-pane="detail">${diffHTML}</div>
+        </div>`;
+      card.querySelectorAll(".pane").forEach(p => p.addEventListener("click", () => setFocus(p.dataset.pane)));
+      return card;
+    }
+
+    function setFocus(which) {
+      document.querySelectorAll(".modal .pane").forEach(p => p.classList.toggle("focused", p.dataset.pane === which));
+      document.getElementById("focusList").classList.toggle("active", which === "list");
+      document.getElementById("focusDetail").classList.toggle("active", which === "detail");
+    }
+
+    const gallery = document.getElementById("gallery");
+    OPTIONS.forEach(o => gallery.appendChild(buildCard(o)));
+    document.getElementById("focusList").addEventListener("click", () => setFocus("list"));
+    document.getElementById("focusDetail").addEventListener("click", () => setFocus("detail"));
+    setFocus("list");
+  </script>
+</body>
+</html>
