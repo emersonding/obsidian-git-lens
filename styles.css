@@ -147,6 +147,18 @@
   text-decoration: line-through;
 }
 
+/* Open-file button, pushed to the right edge of the file header row. */
+.git-lens-diff-open {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.git-lens-diff-open:hover {
+  color: var(--text-normal);
+}
+
 .git-lens-diff-arrow {
   color: var(--text-muted);
 }

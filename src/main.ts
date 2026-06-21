@@ -288,6 +288,7 @@ export default class GitLensPlugin extends Plugin {
         new Notice(`Git Lens: no commit history for "${displayName}"`);
         return;
       }
+      const repoRoot = await this.git.getRepoRoot(abs);
       new HistoryModal(
         this.app,
         this.git,
@@ -298,10 +299,41 @@ export default class GitLensPlugin extends Plugin {
         this.settings,
         () => this.saveSettings(),
         focusHash,
+        (repoRelPath) => this.openDiffFile(repoRoot, repoRelPath),
       ).open();
     } catch {
       new Notice("Git Lens: failed to load commit history");
     }
+  }
+
+  /** Open a file from a diff header in the workspace. The diff path is relative
+   * to the git repo root, so map it back to a vault-relative path before
+   * resolving the `TFile`; fall back to a basename link lookup. */
+  private async openDiffFile(repoRoot: string | null, repoRelPath: string): Promise<void> {
+    const base = this.vaultBase();
+    let file: TAbstractFile | null = null;
+
+    if (repoRoot) {
+      const abs = `${repoRoot}/${repoRelPath}`;
+      if (abs.startsWith(`${base}/`)) {
+        file = this.app.vault.getAbstractFileByPath(abs.slice(base.length + 1));
+      }
+    }
+    // Fall back to treating the diff path as vault-relative (vault == repo root).
+    if (!(file instanceof TFile)) file = this.app.vault.getAbstractFileByPath(repoRelPath);
+
+    if (file instanceof TFile) {
+      await this.app.workspace.getLeaf(false).openFile(file);
+      return;
+    }
+    // Last resort: resolve by basename across the vault (handles deleted/moved).
+    const linktext = repoRelPath.split("/").pop() ?? repoRelPath;
+    const resolved = this.app.metadataCache.getFirstLinkpathDest(linktext, "");
+    if (resolved) {
+      await this.app.workspace.getLeaf(false).openFile(resolved);
+      return;
+    }
+    new Notice(`Git Lens: can't open "${repoRelPath}" — not in this vault`);
   }
 
   /**

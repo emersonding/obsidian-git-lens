@@ -69,8 +69,14 @@ function renderBody(pre: HTMLElement, lines: string[]): void {
  * header per file (badge + path) followed by its +/- colored hunks. Falls back
  * to raw line rendering if the text isn't a recognizable file diff. Returns a
  * map of file path -> its header element, so callers can scroll to a file.
+ * `onOpenFile`, if given, adds an "open file" button to each file header that
+ * invokes it with the file's (repo-relative) path.
  */
-export function renderDiffInto(el: HTMLElement, diff: string): Map<string, HTMLElement> {
+export function renderDiffInto(
+  el: HTMLElement,
+  diff: string,
+  onOpenFile?: (repoRelPath: string) => void,
+): Map<string, HTMLElement> {
   el.empty();
   const headers = new Map<string, HTMLElement>();
   const { preamble, files } = parseDiff(diff);
@@ -99,7 +105,19 @@ export function renderDiffInto(el: HTMLElement, diff: string): Map<string, HTMLE
       name.createSpan({ cls: "git-lens-diff-arrow", text: " → " });
     }
     name.createSpan({ text: file.path || "(unknown)" });
-    if (file.path) headers.set(file.path, header);
+    if (file.path) {
+      headers.set(file.path, header);
+      if (onOpenFile) {
+        const path = file.path;
+        const open = header.createSpan({ cls: "git-lens-diff-open clickable-icon" });
+        setIcon(open, "external-link");
+        open.setAttr("aria-label", "Open file");
+        open.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onOpenFile(path);
+        });
+      }
+    }
 
     if (file.body.length) renderBody(el.createEl("pre", { cls: "git-lens-diff" }), file.body);
   }
@@ -155,6 +173,9 @@ export class HistoryModal extends Modal {
     /** Optional commit to select and reveal on open (e.g. from a blame click);
      * history is paged back until it's found. */
     private readonly focusHash?: string,
+    /** Open a file (by its repo-relative diff path) in the workspace; powers
+     * the open-file button on each diff file header. */
+    private readonly onOpenFile?: (repoRelPath: string) => void,
   ) {
     super(app);
     this.commits = [...initial];
@@ -497,7 +518,7 @@ export class HistoryModal extends Modal {
     for (const [h, row] of this.rowByHash) row.toggleClass("is-active", h === hash);
 
     const render = (diff: string): void => {
-      const headers = renderDiffInto(this.detailEl, diff);
+      const headers = renderDiffInto(this.detailEl, diff, this.onOpenFile);
       const target = scrollToPath ? headers.get(scrollToPath) : undefined;
       if (target) target.scrollIntoView({ block: "start" });
       else this.detailEl.scrollTop = 0;
