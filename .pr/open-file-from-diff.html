@@ -1,0 +1,318 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open-file button on diff headers — show me</title>
+<style>
+  :root{
+    --fg:#1a1a1a; --muted:#5a5a5a; --subtle:#8a8a82;
+    --bg:#fdfdfb; --card:#ffffff; --elevated:#f7f6f1;
+    --accent:#2b4eaa; --accent-soft:#e6ecfa;
+    --rule:#e2e2dc; --rule-strong:#bdbcb4;
+    --code-bg:#f3f1ec; --warn:#b25b0e; --ok:#2f7a3a; --crit:#a02020;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans)}
+  body{line-height:1.6;font-size:16px}
+  .wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:48px;max-width:1180px;margin:0 auto;padding:32px 28px 96px}
+  nav.toc{position:sticky;top:24px;align-self:start;font-size:13px}
+  nav.toc h2{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  nav.toc ol{list-style:none;padding:0;margin:0;counter-reset:toc}
+  nav.toc li{counter-increment:toc;margin:4px 0}
+  nav.toc li::before{content:counter(toc) ". ";color:var(--muted)}
+  nav.toc a{color:var(--fg);text-decoration:none} nav.toc a:hover{color:var(--accent)}
+  .files{margin-top:18px;font-size:12.5px}
+  .files div{margin:3px 0;color:var(--muted)} .files .cnt{color:var(--subtle);font-family:var(--mono);font-size:11px}
+  header.title{border-bottom:1px solid var(--rule);padding-bottom:22px;margin-bottom:28px}
+  header.title .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  header.title h1{font-size:34px;margin:6px 0 4px;letter-spacing:-.01em}
+  header.title .sub{color:var(--muted);max-width:760px}
+  header.title .stats{font-family:var(--mono);font-size:12.5px;color:var(--subtle);margin-top:10px}
+  h2{font-size:22px;margin:44px 0 10px} h2 .num{color:var(--muted);font-weight:500;margin-right:8px}
+  h3{font-size:16px;margin:22px 0 8px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+  pre{font-family:var(--mono);font-size:13px;background:var(--code-bg);padding:14px 16px;border-radius:6px;overflow-x:auto;border:1px solid var(--rule)}
+  pre code{background:transparent;padding:0}
+  .kw{color:#7048a8}.str{color:#2f7a3a}.com{color:#8a8a82;font-style:italic}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-weight:600;background:var(--code-bg)}
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;margin:14px 0;border-radius:0 4px 4px 0;font-size:14.5px}
+  .callout.warn{border-color:var(--warn);background:#fbf1e6} .callout.note{border-color:var(--muted);background:#f3f1ec}
+  .fig{margin:18px 0 22px}
+  .fig svg{display:block;max-width:100%;height:auto;background:#fff;border:1px solid var(--rule);border-radius:6px}
+  .fig figcaption{font-size:13px;color:var(--muted);margin-top:6px;text-align:center}
+  a.src{font-family:var(--mono);font-size:12px;color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
+  details{border:1px solid var(--rule);border-radius:6px;margin:12px 0}
+  details>summary{cursor:pointer;padding:8px 12px;color:var(--muted);font-size:13px;list-style:none}
+  details>summary::before{content:"▸ "} details[open]>summary::before{content:"▾ "}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid var(--rule-strong)}
+  @media(max-width:760px){.wrap{grid-template-columns:1fr}.ba{grid-template-columns:1fr}}
+</style></head><body>
+<div class="wrap">
+  <nav class="toc"><h2>Contents</h2><ol>
+    <li><a href="#sec1">What changed</a></li>
+    <li><a href="#sec2">Wiring: callback threaded through 3 layers</a></li>
+    <li><a href="#sec3">The button — diff.ts</a></li>
+    <li><a href="#sec4">Path resolution — main.ts</a></li>
+    <li><a href="#sec5">Mechanical: CSS</a></li>
+    <li><a href="#sec6">Notes &amp; edge cases</a></li>
+  </ol>
+  <div class="files">
+    <h2 style="font-size:11px">Files</h2>
+    <div>✏️ src/diff.ts <span class="cnt">+22 −3</span></div>
+    <div>✏️ src/main.ts <span class="cnt">+32 −0</span></div>
+    <div>⚙️ styles.css <span class="cnt">+12 −0</span></div>
+  </div>
+  </nav>
+  <main>
+    <header class="title"><div class="eyebrow">feature · obsidian-git-lens @ b9e9aa8</div>
+      <h1>Open a note straight from the diff view</h1>
+      <p class="sub">The history viewer's diff pane groups changes by file under a header
+      like <code>modified test.md</code>. Those headers were inert text. This change adds an
+      <strong>open-file button</strong> (↗) to the right of each header that opens the note
+      in the workspace — threading an optional <code>onOpenFile</code> callback from the
+      plugin down through the modal into the renderer, plus a new path-resolution helper that
+      maps the diff's <em>repo-root-relative</em> path back to a vault <code>TFile</code>.</p>
+      <div class="stats">3 files · +66 / −3 · purely additive (no existing behavior removed)</div>
+    </header>
+
+    <section id="sec1"><h2><span class="num">1</span>What changed</h2>
+      <div class="callout">★ The whole feature is one optional callback. When
+      <code>onOpenFile</code> is supplied, each diff file header gains a clickable ↗ icon;
+      clicking it hands the file's repo-relative path to the plugin, which resolves it to a
+      real note and opens it. When the callback is absent, rendering is byte-for-byte as
+      before — so nothing else in the diff view is affected.
+      <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/diff.ts#L105-L119">diff.ts:105-119</a></div>
+
+      <p>Three layers participate, and the only genuinely new <em>logic</em> is the path
+      mapping in <code>openDiffFile</code> (§4). Everything else is plumbing the callback
+      through to the place a click happens.</p>
+    </section>
+
+    <section id="sec2"><h2><span class="num">2</span>Wiring: one callback, three layers</h2>
+      <p>The click originates deep inside the pure renderer (<code>renderDiffInto</code>) but
+      the ability to <em>open</em> a file lives on the plugin (it knows the vault + git repo
+      root). So a callback is threaded down; the resolved path travels back up on click.</p>
+
+      <div class="ba">
+        <figure class="fig">
+          <svg viewBox="0 0 460 360" role="img" aria-labelledby="b-t b-d">
+            <title id="b-t">Before: inert file header</title>
+            <desc id="b-d">renderDiffInto rendered a badge plus path with no interaction.</desc>
+            <defs><style>
+              .existing{fill:var(--code-bg);stroke:var(--subtle);stroke-width:1.4;stroke-dasharray:5 3}
+              .ex-title{font:700 13px var(--sans);fill:var(--muted)} .ex-detail{font:11px var(--mono);fill:var(--subtle)}
+              .edge{stroke:var(--subtle);stroke-width:1.4;fill:none;stroke-dasharray:5 3}
+            </style>
+            <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--subtle)"/></marker>
+            </defs>
+            <g><rect class="existing" x="120" y="20" width="230" height="50" rx="6"/>
+              <text class="ex-title" x="235" y="42" text-anchor="middle">showHistory()</text>
+              <text class="ex-detail" x="235" y="58" text-anchor="middle">new HistoryModal(…, focusHash)</text></g>
+            <path class="edge" d="M235,70 L235,110" marker-end="url(#ab)"/>
+            <g><rect class="existing" x="120" y="110" width="230" height="50" rx="6"/>
+              <text class="ex-title" x="235" y="132" text-anchor="middle">HistoryModal.select()</text>
+              <text class="ex-detail" x="235" y="148" text-anchor="middle">renderDiffInto(detailEl, diff)</text></g>
+            <path class="edge" d="M235,160 L235,200" marker-end="url(#ab)"/>
+            <g><rect class="existing" x="120" y="200" width="230" height="50" rx="6"/>
+              <text class="ex-title" x="235" y="222" text-anchor="middle">renderDiffInto()</text>
+              <text class="ex-detail" x="235" y="238" text-anchor="middle">header: [badge][path]</text></g>
+            <g><rect class="existing" x="120" y="290" width="230" height="44" rx="6"/>
+              <text class="ex-detail" x="235" y="317" text-anchor="middle">— no click target —</text></g>
+          </svg>
+          <figcaption>Before · the header was static text; nothing to click.</figcaption>
+        </figure>
+
+        <figure class="fig">
+          <svg viewBox="0 0 460 360" role="img" aria-labelledby="a-t a-d">
+            <title id="a-t">After: callback threaded down, path returns on click</title>
+            <desc id="a-d">onOpenFile is passed plugin→modal→renderer; the header button calls back with the file path, which the plugin resolves and opens.</desc>
+            <defs><style>
+              .new{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+              .new-title{font:800 13px var(--sans);fill:var(--accent)} .detail{font:11px var(--mono);fill:var(--fg)}
+              .edge{stroke:var(--accent);stroke-width:1.5;fill:none}
+              .edge-chg{stroke:var(--warn);stroke-width:1.8;fill:none;stroke-dasharray:5 3}
+              .gap{font:700 10.5px var(--mono);fill:var(--warn)} .lbl{font:600 10px var(--mono);fill:var(--accent)}
+            </style>
+            <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--accent)"/></marker>
+            <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--warn)"/></marker>
+            <linearGradient id="subj" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".10"/><stop offset="1" stop-color="var(--accent)" stop-opacity=".02"/></linearGradient>
+            </defs>
+            <g><rect class="new" x="120" y="20" width="230" height="50" rx="6"/>
+              <text class="new-title" x="235" y="40" text-anchor="middle">showHistory()</text>
+              <text class="detail" x="235" y="56" text-anchor="middle">…, p =&gt; openDiffFile(root, p)</text></g>
+            <path class="edge" d="M235,70 L235,110" marker-end="url(#aa)"/>
+            <text class="lbl" x="243" y="93">onOpenFile ↓</text>
+            <g><rect class="new" x="120" y="110" width="230" height="50" rx="6"/>
+              <text class="new-title" x="235" y="130" text-anchor="middle">HistoryModal.select()</text>
+              <text class="detail" x="235" y="146" text-anchor="middle">renderDiffInto(el,diff,onOpenFile)</text></g>
+            <path class="edge" d="M235,160 L235,200" marker-end="url(#aa)"/>
+            <text class="lbl" x="243" y="183">onOpenFile ↓</text>
+            <g><rect class="new" x="120" y="200" width="230" height="50" rx="6" fill="url(#subj)"/>
+              <text class="new-title" x="235" y="220" text-anchor="middle">renderDiffInto()</text>
+              <text class="detail" x="235" y="236" text-anchor="middle">header: [badge][path][↗ button]</text></g>
+            <path class="edge-chg" d="M235,250 L235,290" marker-end="url(#ac)"/>
+            <rect x="250" y="261" width="86" height="16" rx="5" fill="var(--elevated)" stroke="var(--rule)"/>
+            <text class="gap" x="293" y="273" text-anchor="middle">click(path) ↑</text>
+            <g><rect class="new" x="80" y="290" width="310" height="44" rx="6"/>
+              <text class="new-title" x="235" y="311" text-anchor="middle">openDiffFile(repoRoot, path)</text>
+              <text class="detail" x="235" y="326" text-anchor="middle">resolve → workspace.openFile()</text></g>
+          </svg>
+          <figcaption>After · the same chain, now carrying <code>onOpenFile</code> down (blue);
+          the button calls it back with the path (orange) → resolve &amp; open.</figcaption>
+        </figure>
+      </div>
+      <div class="callout note">ⓘ Read the orange edge as the <em>only</em> new runtime flow:
+      a click travels back up out of the otherwise-pure renderer. Blue edges are existing
+      call structure now carrying one extra argument.</div>
+    </section>
+
+    <section id="sec3"><h2><span class="num">3</span>The button — <code>src/diff.ts</code></h2>
+      <details open><summary>Sources</summary> src/diff.ts — renderDiffInto signature, header loop, HistoryModal ctor + select</details>
+      <p>Three edits, all guarded by <code>if (onOpenFile)</code> so the renderer stays a pure
+      function when no callback is given:</p>
+      <ol>
+        <li>New optional param on <code>renderDiffInto(el, diff, onOpenFile?)</code>
+          <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/diff.ts#L75-L79">diff.ts:75-79</a></li>
+        <li>Inside the per-file loop, build the icon span and bind the click
+          <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/diff.ts#L108-L119">diff.ts:108-119</a></li>
+        <li><code>HistoryModal</code> stores <code>onOpenFile</code> and forwards it in <code>select()</code>
+          <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/diff.ts#L178">diff.ts:178</a> ·
+          <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/diff.ts#L521">:521</a></li>
+      </ol>
+      <pre><code><span class="kw">if</span> (file.path) {
+  headers.set(file.path, header);
+  <span class="kw">if</span> (onOpenFile) {
+    <span class="kw">const</span> path = file.path;
+    <span class="kw">const</span> open = header.createSpan({ cls: <span class="str">"git-lens-diff-open clickable-icon"</span> });
+    setIcon(open, <span class="str">"external-link"</span>);
+    open.setAttr(<span class="str">"aria-label"</span>, <span class="str">"Open file"</span>);
+    open.addEventListener(<span class="str">"click"</span>, (e) =&gt; {
+      e.stopPropagation();  <span class="com">// don't trip the diff pane's focus handler</span>
+      onOpenFile(path);
+    });
+  }
+}</code></pre>
+      <div class="callout warn">⚠ <code>e.stopPropagation()</code> is load-bearing: the diff
+      pane has a <code>mousedown</code> focus handler, so without it a click on the button
+      would also re-focus/scroll the pane. Also note the first cut used the icon name
+      <code>"file-symbol"</code> — not a real Lucide icon, so it rendered an empty (invisible)
+      span; corrected to <code>"external-link"</code> in this same commit.</div>
+    </section>
+
+    <section id="sec4"><h2><span class="num">4</span>Path resolution — <code>src/main.ts</code></h2>
+      <details open><summary>Sources</summary> src/main.ts — showHistory (repoRoot + callback), new openDiffFile</details>
+      <p>This is the real logic. Git diff paths are relative to the <strong>repo root</strong>,
+      but Obsidian's <code>getAbstractFileByPath</code> wants a <strong>vault-relative</strong>
+      path — and the vault may sit anywhere under the repo root. <code>openDiffFile</code>
+      walks a three-tier resolution ladder, then opens in the current leaf or warns.</p>
+
+      <figure class="fig">
+        <svg viewBox="0 0 920 300" role="img" aria-labelledby="r-t r-d">
+          <title id="r-t">openDiffFile resolution ladder</title>
+          <desc id="r-d">Try repoRoot-mapped vault path, then path as-is, then basename lookup; else Notice.</desc>
+          <defs><style>
+            .node{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.8}
+            .nt{font:700 12px var(--sans);fill:var(--accent)} .nd{font:10.5px var(--mono);fill:var(--fg)}
+            .term{fill:#eaf5ec;stroke:var(--ok);stroke-width:2} .tt{font:800 12px var(--sans);fill:var(--ok)}
+            .fail{fill:#fbf1e6;stroke:var(--warn);stroke-width:1.8} .ft{font:700 12px var(--sans);fill:var(--warn)}
+            .edge{stroke:var(--accent);stroke-width:1.6;fill:none}
+            .ok-edge{stroke:var(--ok);stroke-width:1.8;fill:none}
+            .miss{font:700 10px var(--mono);fill:var(--warn)} .hit{font:700 10px var(--mono);fill:var(--ok)}
+          </style>
+          <marker id="re" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--accent)"/></marker>
+          <marker id="rok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--ok)"/></marker>
+          </defs>
+          <!-- tier 1 -->
+          <g><rect class="node" x="20" y="40" width="190" height="60" rx="6"/>
+            <text class="nt" x="115" y="62" text-anchor="middle">1 · repoRoot map</text>
+            <text class="nd" x="115" y="80" text-anchor="middle">root/path under base?</text>
+            <text class="nd" x="115" y="94" text-anchor="middle">getAbstractFileByPath</text></g>
+          <path class="edge" d="M210,70 L270,70" marker-end="url(#re)"/>
+          <text class="miss" x="240" y="62" text-anchor="middle">miss</text>
+          <!-- tier 2 -->
+          <g><rect class="node" x="270" y="40" width="190" height="60" rx="6"/>
+            <text class="nt" x="365" y="62" text-anchor="middle">2 · path as-is</text>
+            <text class="nd" x="365" y="80" text-anchor="middle">vault == repo root</text>
+            <text class="nd" x="365" y="94" text-anchor="middle">getAbstractFileByPath</text></g>
+          <path class="edge" d="M460,70 L520,70" marker-end="url(#re)"/>
+          <text class="miss" x="490" y="62" text-anchor="middle">miss</text>
+          <!-- tier 3 -->
+          <g><rect class="node" x="520" y="40" width="200" height="60" rx="6"/>
+            <text class="nt" x="620" y="62" text-anchor="middle">3 · basename</text>
+            <text class="nd" x="620" y="80" text-anchor="middle">getFirstLinkpathDest</text>
+            <text class="nd" x="620" y="94" text-anchor="middle">(handles moved/renamed)</text></g>
+          <path class="edge" d="M620,100 L620,160" marker-end="url(#re)"/>
+          <text class="miss" x="640" y="135">none</text>
+          <!-- fail -->
+          <g><rect class="fail" x="520" y="160" width="200" height="50" rx="6"/>
+            <text class="ft" x="620" y="190" text-anchor="middle">Notice: can't open</text></g>
+          <!-- success target -->
+          <path class="ok-edge" d="M115,100 C115,200 300,235 470,235" marker-end="url(#rok)"/>
+          <path class="ok-edge" d="M365,100 C365,180 430,230 470,235" marker-end="url(#rok)"/>
+          <path class="ok-edge" d="M560,100 C520,180 510,230 470,235" marker-end="url(#rok)"/>
+          <text class="hit" x="250" y="225" text-anchor="middle">TFile hit (any tier)</text>
+          <g><rect class="term" x="470" y="210" width="320" height="50" rx="6"/>
+            <text class="tt" x="630" y="240" text-anchor="middle">workspace.getLeaf(false).openFile(file)</text></g>
+        </svg>
+        <figcaption>Fig · first <code>TFile</code> hit on any tier (green) opens in the current
+        leaf; exhausting all three falls to a Notice (orange).
+        <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/main.ts#L312-L336">main.ts:312-336</a></figcaption>
+      </figure>
+
+      <pre><code><span class="kw">private async</span> openDiffFile(repoRoot: <span class="kw">string</span> | <span class="kw">null</span>, repoRelPath: <span class="kw">string</span>) {
+  <span class="kw">const</span> base = <span class="kw">this</span>.vaultBase();
+  <span class="kw">let</span> file: TAbstractFile | <span class="kw">null</span> = <span class="kw">null</span>;
+  <span class="com">// tier 1 — map repo-root-relative diff path back into the vault</span>
+  <span class="kw">if</span> (repoRoot) {
+    <span class="kw">const</span> abs = <span class="str">`${repoRoot}/${repoRelPath}`</span>;
+    <span class="kw">if</span> (abs.startsWith(<span class="str">`${base}/`</span>)) file = vault.getAbstractFileByPath(abs.slice(base.length + 1));
+  }
+  <span class="com">// tier 2 — vault IS the repo root, so the diff path is already vault-relative</span>
+  <span class="kw">if</span> (!(file <span class="kw">instanceof</span> TFile)) file = vault.getAbstractFileByPath(repoRelPath);
+  <span class="kw">if</span> (file <span class="kw">instanceof</span> TFile) { <span class="kw">await</span> workspace.getLeaf(false).openFile(file); <span class="kw">return</span>; }
+  <span class="com">// tier 3 — last resort: resolve by basename across the vault</span>
+  <span class="kw">const</span> resolved = metadataCache.getFirstLinkpathDest(repoRelPath.split(<span class="str">"/"</span>).pop() ?? repoRelPath, <span class="str">""</span>);
+  <span class="kw">if</span> (resolved) { <span class="kw">await</span> workspace.getLeaf(false).openFile(resolved); <span class="kw">return</span>; }
+  <span class="kw">new</span> Notice(<span class="str">`Git Lens: can't open "${repoRelPath}" — not in this vault`</span>);
+}</code></pre>
+      <p>The caller resolves the repo root once per history open and curries it into the
+      callback, so the per-click handler does no extra git work:
+      <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/main.ts#L291">main.ts:291</a>
+      (<code>repoRoot = await git.getRepoRoot(abs)</code>) ·
+      <a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/src/main.ts#L302">:302</a>
+      (<code>p =&gt; openDiffFile(repoRoot, p)</code>).</p>
+    </section>
+
+    <section id="sec5"><h2><span class="num">5</span>Mechanical — <code>styles.css</code></h2>
+      <p>Pure styling; no behavior. The header row is already <code>display:flex</code>, so
+      <code>margin-left:auto</code> floats the button to the right edge.</p>
+      <table>
+        <tr><th>Selector</th><th>before → after</th><th>why</th></tr>
+        <tr><td><code>.git-lens-diff-open</code></td><td>— → <code>margin-left:auto; flex:0 0 auto; color:var(--text-muted); cursor:pointer</code></td><td>pin button to row's right edge, don't shrink</td></tr>
+        <tr><td><code>.git-lens-diff-open:hover</code></td><td>— → <code>color:var(--text-normal)</code></td><td>brighten on hover for affordance</td></tr>
+      </table>
+      <p><a class="src" href="https://github.com/emersonding/obsidian-git-lens/blob/b9e9aa88b6a11669d36c43af7c4b86cdbf4e8316/styles.css#L150-L161">styles.css:150-161</a></p>
+    </section>
+
+    <section id="sec6"><h2><span class="num">6</span>Notes &amp; edge cases</h2>
+      <ul>
+        <li><strong>Deleted files</strong> still show the button, but won't resolve to a
+        <code>TFile</code> — the user gets the "can't open" Notice rather than the button
+        being hidden. Intentional; can be suppressed per-kind if desired.</li>
+        <li><strong>Renames</strong> use <code>file.path</code> (the new path), so the button
+        opens the current location.</li>
+        <li><strong>Tier 3</strong> uses <code>getFirstLinkpathDest</code> (basename match),
+        which is also why a moved-but-same-name note still opens.</li>
+        <li>Verified: <code>npm run build</code> (tsc <code>--noEmit</code> + esbuild) passes
+        clean. No existing tests touch this code path.</li>
+      </ul>
+      <details><summary>Full diff (src/diff.ts · src/main.ts · styles.css)</summary>
+      <pre><code>see commit b9e9aa8 — "feat: open-file button on diff file headers (0.15.0)"
+src/diff.ts   +22 -3   renderDiffInto onOpenFile param, header button, modal threading
+src/main.ts   +32 -0   repoRoot fetch in showHistory, new openDiffFile resolution helper
+styles.css    +12 -0   .git-lens-diff-open positioning + hover</code></pre></details>
+    </section>
+  </main>
+</div></body></html>
