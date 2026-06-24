@@ -1,7 +1,7 @@
 {
   "id": "git-lens",
   "name": "Git Lens",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "minAppVersion": "1.4.0",
   "description": "JetBrains-style per-line git blame annotations in the editor gutter. Click or right-click a line to see the commit that last changed it.",
   "author": "emerson",

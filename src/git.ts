@@ -205,6 +205,22 @@ export class GitBlameService {
   }
 
   /**
+   * Cumulative diff between two commits (`git diff <from> <to>`), scoped to a
+   * file or directory, for selecting a commit range in the history viewer. `from`
+   * is the older endpoint and `to` the newer one, so additions read as `+`. When
+   * `to` is omitted the diff runs against the working tree (`git diff <from>`),
+   * which lets the synthetic "Uncommitted changes" entry act as the newer end.
+   * `--textconv` decrypts git-crypt blobs (a no-op for ordinary files).
+   */
+  async diffRange(absPath: string, isDir: boolean, fromHash: string, toHash?: string): Promise<string> {
+    const { cwd, pathspec } = historyTarget(absPath, isDir);
+    const args = ["diff", "--no-color", "--textconv", fromHash];
+    if (toHash) args.push(toHash);
+    args.push("--", pathspec);
+    return this.run(cwd, args);
+  }
+
+  /**
    * Files with uncommitted changes (staged, unstaged, or untracked) within a
    * file or directory scope. Backs the synthetic "Uncommitted changes" entry in
    * the history viewer. Paths are repo-root-relative, matching `git diff`/`git

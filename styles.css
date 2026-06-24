@@ -384,6 +384,14 @@
   border-left-color: var(--text-accent);
 }
 
+/* Commits between the two range endpoints: a lighter accent tint so the
+   selected span reads as one block without competing with the endpoints. */
+.git-lens-commit.is-in-range {
+  background: var(--background-secondary-alt);
+  border-left-color: var(--text-accent);
+  opacity: 0.85;
+}
+
 /* Synthetic "Uncommitted changes" entry: a warm accent so it reads as local,
    in-progress work distinct from real history. */
 .git-lens-commit.is-working {

@@ -70,16 +70,23 @@ function renderBody(pre: HTMLElement, lines: string[]): void {
  * to raw line rendering if the text isn't a recognizable file diff. Returns a
  * map of file path -> its header element, so callers can scroll to a file.
  * `onOpenFile`, if given, adds an "open file" button to each file header that
- * invokes it with the file's (repo-relative) path.
+ * invokes it with the file's (repo-relative) path. `heading`, if given, renders
+ * a preamble line at the top (used to label a multi-commit range diff, which
+ * carries no commit message of its own).
  */
 export function renderDiffInto(
   el: HTMLElement,
   diff: string,
   onOpenFile?: (repoRelPath: string) => void,
+  heading?: string,
 ): Map<string, HTMLElement> {
   el.empty();
   const headers = new Map<string, HTMLElement>();
   const { preamble, files } = parseDiff(diff);
+
+  if (heading) {
+    el.createDiv({ cls: "git-lens-diff-commit" }).createDiv({ text: heading });
+  }
 
   const message = preamble.join("\n").trim();
   if (message) {
@@ -144,6 +151,9 @@ export class HistoryModal extends Modal {
   private rowsEl!: HTMLElement;
   private moreEl!: HTMLElement;
   private selectedHash: string | null = null;
+  /** The cmd/ctrl-clicked second endpoint of a commit range, anchored on
+   *  `selectedHash`. Null means a single commit is selected. */
+  private rangeHash: string | null = null;
   /** Which pane Up/Down acts on: switch commits vs. scroll the diff. */
   private focusedPane: "commits" | "diff" = "commits";
   private allExpanded = false;
@@ -369,9 +379,12 @@ export class HistoryModal extends Modal {
       e.stopPropagation();
       setExpanded(!expanded);
     });
-    main.addEventListener("click", () => {
+    main.addEventListener("click", (e) => {
       this.setFocus("commits");
-      void this.select(commit.hash);
+      // Cmd/Ctrl-click extends the selection into a range anchored on the
+      // already-selected commit; a plain click selects this commit alone.
+      if (e.metaKey || e.ctrlKey) void this.selectRange(commit.hash);
+      else void this.select(commit.hash);
     });
 
     setExpanded(this.allExpanded);
@@ -513,9 +526,95 @@ export class HistoryModal extends Modal {
     if (left) this.detailEl.scrollLeft += left;
   }
 
+  /**
+   * Mark the selected commit(s): both endpoints get `is-active`, and when a range
+   * is active every commit between them (newest-first order) gets `is-in-range`.
+   */
+  private updateActiveRows(): void {
+    const a = this.selectedHash;
+    const b = this.rangeHash;
+    let lo = -1;
+    let hi = -1;
+    if (a && b) {
+      const ia = this.commits.findIndex((c) => c.hash === a);
+      const ib = this.commits.findIndex((c) => c.hash === b);
+      lo = Math.min(ia, ib);
+      hi = Math.max(ia, ib);
+    }
+    this.commits.forEach((c, i) => {
+      const row = this.rowByHash.get(c.hash);
+      if (!row) return;
+      const isEndpoint = c.hash === a || c.hash === b;
+      row.toggleClass("is-active", isEndpoint);
+      row.toggleClass("is-in-range", b !== null && i > lo && i < hi);
+    });
+  }
+
+  /**
+   * Extend the selection to a commit range: `toHash` becomes the second endpoint,
+   * anchored on the currently selected commit. Diffs the older endpoint against
+   * the newer one (`git diff <older> <newer>`) so the right pane shows every
+   * change across the commits in between. Falls back to a single selection if
+   * there's no anchor yet or the same commit is re-clicked.
+   */
+  private async selectRange(toHash: string): Promise<void> {
+    const anchor = this.selectedHash;
+    if (!anchor || anchor === toHash) {
+      await this.select(toHash);
+      return;
+    }
+    this.rangeHash = toHash;
+    this.updateActiveRows();
+
+    const ia = this.commits.findIndex((c) => c.hash === anchor);
+    const ib = this.commits.findIndex((c) => c.hash === toHash);
+    // Newest-first order: the larger index is the older commit (the diff base).
+    const olderHash = this.commits[Math.max(ia, ib)].hash;
+    const newerHash = this.commits[Math.min(ia, ib)].hash;
+    // The working-tree entry (zero hash) sits at the top as the newest end; a
+    // bare `git diff <older>` then compares it against the working tree.
+    const newerIsWorking = newerHash === ZERO_HASH;
+    const cacheKey = `${olderHash}..${newerIsWorking ? "WT" : newerHash}`;
+    const heading = `Changes from ${shortHash(olderHash)} to ${
+      newerIsWorking ? "uncommitted" : shortHash(newerHash)
+    }`;
+
+    const render = (diff: string): void => {
+      renderDiffInto(this.detailEl, diff, this.onOpenFile, heading);
+      this.detailEl.scrollTop = 0;
+    };
+
+    const cached = newerIsWorking ? undefined : this.diffCache.get(cacheKey);
+    if (cached !== undefined) {
+      render(cached);
+      return;
+    }
+
+    this.detailEl.empty();
+    this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "Loading diff…" });
+    try {
+      const diff = await this.git.diffRange(
+        this.absPath,
+        this.isDir,
+        olderHash,
+        newerIsWorking ? undefined : newerHash,
+      );
+      if (!newerIsWorking) this.diffCache.set(cacheKey, diff);
+      // The user may have changed the selection while we awaited git.
+      if (this.selectedHash === anchor && this.rangeHash === toHash) render(diff);
+    } catch {
+      if (this.selectedHash === anchor && this.rangeHash === toHash) {
+        this.detailEl.empty();
+        this.detailEl.createDiv({ cls: "git-lens-history-empty", text: "Failed to load diff." });
+      }
+      new Notice("Git Lens: failed to load range diff");
+    }
+  }
+
   private async select(hash: string, scrollToPath?: string): Promise<void> {
     this.selectedHash = hash;
-    for (const [h, row] of this.rowByHash) row.toggleClass("is-active", h === hash);
+    this.rangeHash = null;
+    this.updateActiveRows();
 
     const render = (diff: string): void => {
       const headers = renderDiffInto(this.detailEl, diff, this.onOpenFile);
