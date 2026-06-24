@@ -38,6 +38,11 @@ const HORIZONTAL_STEP = 80;
 /** Fraction of the diff pane height to scroll per d/b page press. */
 const PAGE_FRACTION = 0.9;
 
+/** True for `.md` paths (case-insensitive); the file-type filter keys off this. */
+function isMarkdownPath(path: string): boolean {
+  return path.toLowerCase().endsWith(".md");
+}
+
 /**
  * Color +/- content rows; size each to its content so the tint spans full
  * width. Replace blocks get word-level highlighting: the row keeps its base
@@ -79,6 +84,9 @@ export function renderDiffInto(
   diff: string,
   onOpenFile?: (repoRelPath: string) => void,
   heading?: string,
+  /** When given, only files whose path satisfies this predicate are shown (the
+   *  rest are hidden, e.g. for the "Markdown only" filter). */
+  includeFile?: (path: string) => boolean,
 ): Map<string, HTMLElement> {
   el.empty();
   const headers = new Map<string, HTMLElement>();
@@ -103,7 +111,17 @@ export function renderDiffInto(
     return headers;
   }
 
-  for (const file of files) {
+  const shown = includeFile ? files.filter((f) => includeFile(f.path || "")) : files;
+  if (shown.length === 0) {
+    // Everything was filtered out (e.g. a commit with no Markdown changes).
+    el.createDiv({
+      cls: "git-lens-history-empty",
+      text: "No matching files (toggle the file filter to show all types).",
+    });
+    return headers;
+  }
+
+  for (const file of shown) {
     const header = el.createDiv({ cls: "git-lens-diff-file" });
     header.createSpan({ cls: `git-lens-diff-badge is-${file.kind}`, text: BADGE_LABEL[file.kind] });
     const name = header.createSpan({ cls: "git-lens-diff-path" });
@@ -146,6 +164,8 @@ interface CommitRow {
 export class HistoryModal extends Modal {
   private detailEl!: HTMLElement;
   private listEl!: HTMLElement;
+  /** The master-detail split; carries `is-md-only` to hide non-Markdown rows. */
+  private splitEl!: HTMLElement;
   private diffDot!: HTMLElement;
   private titleTextEl!: HTMLElement;
   private rowsEl!: HTMLElement;
@@ -212,6 +232,25 @@ export class HistoryModal extends Modal {
       void this.saveSettings();
     });
 
+    // File-type filter: when active (the default), only Markdown changes show in
+    // both the diff pane and each commit's file list; toggling reveals all types.
+    const filter = this.titleEl.createSpan({ cls: "git-lens-history-filter clickable-icon" });
+    setIcon(filter, "file-text");
+    const syncFilter = (): void => {
+      this.splitEl.toggleClass("is-md-only", this.settings.diffMdOnly);
+      filter.toggleClass("is-active", this.settings.diffMdOnly);
+      filter.setAttr(
+        "aria-label",
+        this.settings.diffMdOnly ? "Showing Markdown only — click to show all files" : "Showing all files — click to show Markdown only",
+      );
+    };
+    filter.addEventListener("click", () => {
+      this.settings.diffMdOnly = !this.settings.diffMdOnly;
+      syncFilter();
+      void this.saveSettings();
+      this.rerenderDiff();
+    });
+
     const toggle = this.titleEl.createSpan({ cls: "git-lens-history-expand clickable-icon" });
     setIcon(toggle, "chevrons-up-down");
     toggle.setAttr("aria-label", "Expand all");
@@ -223,6 +262,7 @@ export class HistoryModal extends Modal {
     });
 
     const split = this.contentEl.createDiv({ cls: "git-lens-history" });
+    this.splitEl = split;
     this.listEl = split.createDiv({ cls: "git-lens-history-list" });
     this.rowsEl = this.listEl.createDiv({ cls: "git-lens-history-rows" });
     this.moreEl = this.listEl.createDiv({ cls: "git-lens-history-more" });
@@ -235,6 +275,7 @@ export class HistoryModal extends Modal {
     // the list (handled where those rows are wired up).
     this.detailEl.addEventListener("mousedown", () => this.setFocus("diff"));
     syncWrap();
+    syncFilter();
 
     // Up/Down depend on the focused pane: switch the selected commit when the
     // list is focused, or scroll the diff when the diff pane is focused.
@@ -394,6 +435,8 @@ export class HistoryModal extends Modal {
   private renderChangedFile(list: HTMLElement, hash: string, file: ChangedFile): void {
     const info = STATUS_INFO[file.status] ?? { label: file.status, kind: "modified" as DiffFileKind };
     const fr = list.createDiv({ cls: "git-lens-commit-file" });
+    // Tag non-Markdown rows so the `is-md-only` filter can hide them via CSS.
+    if (!isMarkdownPath(file.path)) fr.addClass("is-nonmd");
     fr.createSpan({ cls: `git-lens-file-status is-${info.kind}`, text: info.label });
     const path = fr.createSpan({ cls: "git-lens-file-path" });
     if (file.oldPath) {
@@ -580,7 +623,7 @@ export class HistoryModal extends Modal {
     }`;
 
     const render = (diff: string): void => {
-      renderDiffInto(this.detailEl, diff, this.onOpenFile, heading);
+      renderDiffInto(this.detailEl, diff, this.onOpenFile, heading, (p) => this.includeInDiff(p));
       this.detailEl.scrollTop = 0;
     };
 
@@ -611,13 +654,28 @@ export class HistoryModal extends Modal {
     }
   }
 
+  /** Whether a diff file path is shown given the current file-type filter. */
+  private includeInDiff(path: string): boolean {
+    return !this.settings.diffMdOnly || isMarkdownPath(path);
+  }
+
+  /** Re-render the diff pane for the current selection (single commit or range)
+   *  after the file-type filter changes. No-op when nothing is selected. */
+  private rerenderDiff(): void {
+    if (!this.selectedHash) return;
+    if (this.rangeHash) void this.selectRange(this.rangeHash);
+    else void this.select(this.selectedHash);
+  }
+
   private async select(hash: string, scrollToPath?: string): Promise<void> {
     this.selectedHash = hash;
     this.rangeHash = null;
     this.updateActiveRows();
 
     const render = (diff: string): void => {
-      const headers = renderDiffInto(this.detailEl, diff, this.onOpenFile);
+      const headers = renderDiffInto(this.detailEl, diff, this.onOpenFile, undefined, (p) =>
+        this.includeInDiff(p),
+      );
       const target = scrollToPath ? headers.get(scrollToPath) : undefined;
       if (target) target.scrollIntoView({ block: "start" });
       else this.detailEl.scrollTop = 0;

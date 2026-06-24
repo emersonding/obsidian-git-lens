@@ -78,6 +78,19 @@ export class GitLensSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Markdown files only")
+      .setDesc(
+        "In the history viewer, show only Markdown (.md) changes by default. The " +
+          "file-type icon in the viewer toggles this per session.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.diffMdOnly).onChange(async (v) => {
+          this.plugin.settings.diffMdOnly = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Git executable")
       .setDesc(
         "Path to the git binary. Set an absolute path (e.g. /usr/bin/git or " +

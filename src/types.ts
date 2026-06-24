@@ -93,6 +93,9 @@ export interface GitLensSettings {
   gitPath: string;
   /** Soft-wrap long diff lines in the history view instead of scrolling. */
   wrapDiff: boolean;
+  /** Show only Markdown (`.md`) changes in the history viewer (diff + commit
+   *  file lists). When false, all file types are shown. */
+  diffMdOnly: boolean;
 }
 
 export const DEFAULT_SETTINGS: GitLensSettings = {
@@ -102,6 +105,7 @@ export const DEFAULT_SETTINGS: GitLensSettings = {
   colorMode: "commit",
   gitPath: "git",
   wrapDiff: false,
+  diffMdOnly: true,
 };
 
 /** Hash git uses for the synthetic "Not Committed Yet" commit. */

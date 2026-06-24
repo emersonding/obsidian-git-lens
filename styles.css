@@ -240,12 +240,13 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  width: min(1100px, 90vw);
-  height: min(720px, 80vh);
+  /* Open large, but never exceed the Obsidian window (the vw/vh caps). */
+  width: min(1500px, 94vw);
+  height: min(1000px, 90vh);
   min-width: 480px;
   min-height: 320px;
   max-width: 96vw;
-  max-height: 92vh;
+  max-height: 94vh;
 }
 
 .git-lens-history-modal .modal-content {
@@ -276,6 +277,16 @@
 .git-lens-history-wrap {
   flex: 0 0 auto;
   cursor: pointer;
+}
+
+.git-lens-history-filter {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+/* Active = filtering to Markdown only (the default). */
+.git-lens-history-filter.is-active {
+  color: var(--text-accent);
 }
 
 .git-lens-history-expand {
@@ -501,6 +512,12 @@
 
 .git-lens-commit-file.is-empty:hover {
   background: none;
+}
+
+/* File-type filter: hide non-Markdown rows in each commit's file list when the
+   viewer is in "Markdown only" mode. */
+.git-lens-history.is-md-only .git-lens-commit-file.is-nonmd {
+  display: none;
 }
 
 .git-lens-file-status {
