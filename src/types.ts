@@ -96,6 +96,10 @@ export interface GitLensSettings {
   /** Show only Markdown (`.md`) changes in the history viewer (diff + commit
    *  file lists). When false, all file types are shown. */
   diffMdOnly: boolean;
+  /** Vault-relative folder paths pinned for quick history access. Each gets its
+   *  own command (`Git Lens: Show history: <path>`) so a hotkey can be bound to
+   *  a specific folder. An empty string "" means the vault root (all files). */
+  pinnedFolders: string[];
 }
 
 export const DEFAULT_SETTINGS: GitLensSettings = {
@@ -106,6 +110,7 @@ export const DEFAULT_SETTINGS: GitLensSettings = {
   gitPath: "git",
   wrapDiff: false,
   diffMdOnly: true,
+  pinnedFolders: [],
 };
 
 /** Hash git uses for the synthetic "Not Committed Yet" commit. */

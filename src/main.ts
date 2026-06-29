@@ -96,6 +96,18 @@ export default class GitLensPlugin extends Plugin {
             .setIcon("history")
             .onClick(() => void this.openHistory(file)),
         );
+        // For folders, offer a pin/unpin toggle that drives the hotkey-bindable
+        // per-folder history commands.
+        if (file instanceof TFolder) {
+          const path = file.path;
+          const pinned = this.settings.pinnedFolders.includes(path);
+          menu.addItem((item) =>
+            item
+              .setTitle(pinned ? "Git Lens: unpin folder history" : "Git Lens: pin folder for history hotkey")
+              .setIcon(pinned ? "pin-off" : "pin")
+              .onClick(() => void this.togglePinnedFolder(path)),
+          );
+        }
       }),
     );
 
@@ -115,6 +127,8 @@ export default class GitLensPlugin extends Plugin {
       name: "Show history for all files",
       callback: () => void this.showHistory(this.vaultBase(), true, "All files"),
     });
+
+    this.registerPinnedFolderCommands();
 
     this.addCommand({
       id: "toggle-blame-note",
@@ -264,6 +278,52 @@ export default class GitLensPlugin extends Plugin {
     }
     const displayName = result.absFile.split("/").pop() ?? result.absFile;
     await this.showHistory(result.absFile, false, displayName, blame.hash);
+  }
+
+  /**
+   * Register one history command per pinned folder. Each command has a stable id
+   * (`show-history-folder:<path>`) so Obsidian keeps any hotkey bound to it across
+   * reloads. Call again after the pinned list changes to pick up additions; the
+   * internal `removeCommand` clears stale ids so renamed/removed folders don't
+   * linger in the command palette.
+   */
+  registerPinnedFolderCommands(): void {
+    const commands = (this.app as unknown as {
+      commands?: { removeCommand?: (id: string) => void; commands?: Record<string, unknown> };
+    }).commands;
+    const prefix = `${this.manifest.id}:show-history-folder:`;
+    // Drop any previously-registered folder commands before re-adding.
+    if (commands?.commands && commands.removeCommand) {
+      for (const fullId of Object.keys(commands.commands)) {
+        if (fullId.startsWith(prefix)) commands.removeCommand(fullId);
+      }
+    }
+    for (const path of this.settings.pinnedFolders) {
+      const label = path || "/ (all files)";
+      this.addCommand({
+        id: `show-history-folder:${path}`,
+        name: `Show history: ${label}`,
+        callback: () => {
+          const abs = path ? `${this.vaultBase()}/${path}` : this.vaultBase();
+          void this.showHistory(abs, true, path || "All files");
+        },
+      });
+    }
+  }
+
+  /** Add or remove a folder from the pinned list, then re-register the commands
+   *  and persist. Used by both the folder context menu and the settings tab. */
+  async togglePinnedFolder(path: string): Promise<void> {
+    const i = this.settings.pinnedFolders.indexOf(path);
+    if (i >= 0) this.settings.pinnedFolders.splice(i, 1);
+    else this.settings.pinnedFolders.push(path);
+    this.registerPinnedFolderCommands();
+    await this.saveSettings();
+    new Notice(
+      i >= 0
+        ? `Git Lens: unpinned "${path || "/"}"`
+        : `Git Lens: pinned "${path || "/"}" — bind a hotkey in Settings → Hotkeys`,
+    );
   }
 
   /** Open the commit-history viewer for a file or folder from the explorer. */

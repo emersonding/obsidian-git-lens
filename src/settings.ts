@@ -90,6 +90,8 @@ export class GitLensSettingTab extends PluginSettingTab {
         }),
       );
 
+    this.renderPinnedFolders(containerEl);
+
     new Setting(containerEl)
       .setName("Git executable")
       .setDesc(
@@ -106,6 +108,60 @@ export class GitLensSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.plugin.applyGitConfig();
             this.plugin.refreshActive();
+          }),
+      );
+  }
+
+  /**
+   * Pinned folders: each one becomes its own command
+   * (`Git Lens: Show history: <path>`) so a hotkey can be bound to a specific
+   * folder in Settings → Hotkeys. Add by typing a vault-relative path (blank =
+   * vault root), or use the folder's right-click menu in the file explorer.
+   */
+  private renderPinnedFolders(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName("Pinned folders (history hotkeys)")
+      .setDesc(
+        "Each pinned folder gets its own command — bind a hotkey to it in " +
+          "Settings → Hotkeys (search \"Git Lens: Show history\"). You can also " +
+          "pin from a folder's right-click menu.",
+      )
+      .setHeading();
+
+    for (const path of this.plugin.settings.pinnedFolders) {
+      new Setting(containerEl)
+        .setName(path || "/ (vault root)")
+        .addExtraButton((b) =>
+          b
+            .setIcon("trash")
+            .setTooltip("Unpin")
+            .onClick(async () => {
+              await this.plugin.togglePinnedFolder(path);
+              this.display();
+            }),
+        );
+    }
+
+    let draft = "";
+    new Setting(containerEl)
+      .setName("Add a folder")
+      .setDesc("Vault-relative path, e.g. Journal/2026. Leave blank for the vault root.")
+      .addText((t) =>
+        t.setPlaceholder("path/to/folder").onChange((v) => {
+          draft = v.trim().replace(/^\/+|\/+$/g, "");
+        }),
+      )
+      .addButton((b) =>
+        b
+          .setButtonText("Add")
+          .setCta()
+          .onClick(async () => {
+            if (this.plugin.settings.pinnedFolders.includes(draft)) {
+              this.display();
+              return;
+            }
+            await this.plugin.togglePinnedFolder(draft);
+            this.display();
           }),
       );
   }
