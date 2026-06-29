@@ -144,7 +144,31 @@ export function renderDiffInto(
       }
     }
 
-    if (file.body.length) renderBody(el.createEl("pre", { cls: "git-lens-diff" }), file.body);
+    let body: HTMLElement | null = null;
+    if (file.body.length) {
+      body = el.createEl("pre", { cls: "git-lens-diff" });
+      renderBody(body, file.body);
+    }
+
+    // Fold toggle: collapses this file's body so long diffs can be skimmed. Sits
+    // to the right of the open-file button. The whole header is clickable too.
+    const fold = header.createSpan({ cls: "git-lens-diff-fold clickable-icon" });
+    setIcon(fold, "chevron-down");
+    let collapsed = false;
+    const setCollapsed = (v: boolean): void => {
+      collapsed = v;
+      header.toggleClass("is-collapsed", v);
+      if (body) body.toggleClass("git-lens-hidden", v);
+      setIcon(fold, v ? "chevron-right" : "chevron-down");
+      fold.setAttr("aria-label", v ? "Expand file" : "Collapse file");
+    };
+    setCollapsed(false);
+    const toggleFold = (e: MouseEvent): void => {
+      e.stopPropagation();
+      setCollapsed(!collapsed);
+    };
+    fold.addEventListener("click", toggleFold);
+    header.addEventListener("click", toggleFold);
   }
   return headers;
 }
